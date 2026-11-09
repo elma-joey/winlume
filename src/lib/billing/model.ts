@@ -18,7 +18,7 @@ export type BillingConfiguration = {
 
 export const INITIAL_BILLING_CONFIGURATION: BillingConfiguration = {
   settlementMode: "legacy_balance",
-  allowBalanceFallback: false,
+  allowBalanceFallback: true,
   monthlyPlan: null,
 };
 

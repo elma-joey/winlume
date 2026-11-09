@@ -378,6 +378,7 @@ export async function getUserLogs(
     method: "GET",
     headers: teamHeaders(pat),
     cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
   });
   const data = requireData(
     await parseEnvelope<{ page: number; page_size: number; total: number; items: NewApiUserLog[] }>(response),
