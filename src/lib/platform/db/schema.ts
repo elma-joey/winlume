@@ -372,3 +372,32 @@ export const serviceIntegrations = pgTable("service_integrations", {
   value: jsonb("value").$type<Record<string, unknown>>().notNull(),
   updatedAt,
 });
+
+/** Purchase audit only; entitlement and deduction remain in the model gateway. */
+export const planPurchases = pgTable("reizo_plan_purchases", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  planId: varchar("plan_id", { length: 20 }).notNull(),
+  productId: varchar("product_id", { length: 128 }).notNull(),
+  nativePlanId: integer("native_plan_id").notNull(),
+  amount: varchar("amount", { length: 32 }).notNull(),
+  allowance: integer("allowance").notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("creating"),
+  nativeReference: varchar("native_reference", { length: 128 }),
+  checkoutId: varchar("checkout_id", { length: 128 }),
+  checkoutUrl: text("checkout_url"),
+  checkoutExpiresAt: timestamp("checkout_expires_at", { withTimezone: true }),
+  providerOrderId: varchar("provider_order_id", { length: 128 }),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  createdAt, updatedAt,
+}, table => [uniqueIndex("reizo_plan_native_reference").on(table.nativeReference), uniqueIndex("reizo_plan_checkout").on(table.checkoutId), uniqueIndex("reizo_plan_provider_order").on(table.providerOrderId), index("reizo_plan_org").on(table.organizationId), uniqueIndex("reizo_plan_one_pending_per_org").on(table.organizationId).where(sql`${table.status} in ('creating','pending','uncertain')`)]);
+
+export const kyrenEvents = pgTable("reizo_kyren_events", {
+  id: varchar("id", { length: 128 }).primaryKey(),
+  payloadHash: varchar("payload_hash", { length: 64 }).notNull(),
+  type: varchar("type", { length: 80 }).notNull(),
+  purchaseId: varchar("purchase_id", { length: 64 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull(),
+  createdAt, updatedAt,
+});

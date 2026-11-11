@@ -12,6 +12,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       data: {
+        allowance_per_cny: 300,
         quota_per_unit: 1_000_000,
         quota_display_type: "custom",
         display_in_currency: false,

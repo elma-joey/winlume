@@ -2,6 +2,7 @@ import { getCurrentUserId } from "@/lib/auth/session";
 import { NewApiTeamError } from "@/lib/newapi/team-client";
 import { DEFAULT_QUOTA_PER_UNIT } from "@/lib/catalog/plaza-display";
 import { workspaceGateway } from "@/lib/gateway/workspace";
+import { membership } from "./plan-purchases";
 import { getPlatformDb } from "@/lib/platform/db/client";
 import {
   canManageOrganizationResources,
@@ -232,14 +233,15 @@ async function walletFromCurrentOrganization(context: ConsoleRequestContext, tar
     const database = getPlatformDb();
     if (!database) return { ...EMPTY_WALLET };
     const { quota, usedQuota } = await workspaceGateway(database, organizationId).balance();
+    const plan = await membership(context,organizationId);
     return {
       availableCredits: quota / DEFAULT_QUOTA_PER_UNIT,
       reservedCredits: 0,
       usedCredits: usedQuota / DEFAULT_QUOTA_PER_UNIT,
       currency: "CNY",
       syncStatus: "ready" as const,
-      membershipAllowance: EMPTY_WALLET.membershipAllowance,
-      subscription: EMPTY_WALLET.subscription,
+      membershipAllowance: plan ? {status:"active" as const,totalUnits:String(plan.allowance),remainingUnits:String(Math.floor(plan.remainingAllowance)),periodStart:plan.startsAt,resetsAt:plan.expiresAt}:EMPTY_WALLET.membershipAllowance,
+      subscription: plan ? {name:plan.name,status:"active" as const,renewsAt:plan.expiresAt}:EMPTY_WALLET.subscription,
     };
   } catch {
     return { ...EMPTY_WALLET };

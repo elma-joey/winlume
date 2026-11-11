@@ -92,6 +92,7 @@ export function getConsoleTopup(input?: { organizationId?: string | null; order?
 }
 
 export function createConsoleTopup(input: {
+  expectedPayMoney?: string;
   organizationId?: string | null;
   amount: number;
   paymentMethod: string;

@@ -6,9 +6,8 @@ import {
   verifyEpayNotification,
 } from "./epay";
 
-// Real production async-notify captured from the v2api new-api logs
-// (gateway https://api.kyren.top/epay, merchant merch_yErcefAK2j1ytd2u).
-const LIVE_KEY = "kyren_live_55KDiHWsC7ID4L1XFrql1xVaiRxTfkEA";
+// Synthetic callback fixture; merchant secrets never belong in tests.
+const LIVE_KEY = "fixture-merchant-signing-key";
 const LIVE_NOTIFY: Record<string, string> = {
   pid: "merch_yErcefAK2j1ytd2u",
   trade_no: "order_Qm0WUuMg2fkaxtbdhNUk",
@@ -17,12 +16,12 @@ const LIVE_NOTIFY: Record<string, string> = {
   name: "TUC20",
   money: "20",
   trade_status: "TRADE_SUCCESS",
-  sign: "11e723831bc9981cb5cc48c910a1d359",
+  sign: "dc4af0b7bb71e9df0d92c7a0a19b685e",
   sign_type: "MD5",
 };
 
 describe("epaySign", () => {
-  it("reproduces the signature the kyren gateway sent", () => {
+  it("matches a synthetic Epay signature vector", () => {
     expect(epaySign(LIVE_NOTIFY, LIVE_KEY)).toBe(LIVE_NOTIFY.sign);
   });
 

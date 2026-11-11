@@ -92,7 +92,7 @@ const columns: ColumnDef<ConsoleUsageLog>[] = [
   {
     accessorKey: "credits",
     header: ({ column }) => <DataTableColumnHeader column={column} title="费用" />,
-    cell: ({ row }) => <span className="font-mono text-xs text-ink-700">{number(row.original.credits)}</span>,
+    cell: ({ row }) => <span className="font-mono text-xs text-ink-700">{number(row.original.credits * 300)}</span>,
     meta: { label: "费用" },
   },
   {
@@ -286,7 +286,7 @@ export function ConsoleUsageLogs({
               <DetailRow label="输入 Tokens" value={number(selected.promptTokens)} />
               <DetailRow label="输出 Tokens" value={number(selected.completionTokens)} />
               <DetailRow label="耗时" value={`${number(selected.durationSeconds)}s`} />
-              <DetailRow label="费用" value={number(selected.credits)} />
+              <DetailRow label="费用" value={number(selected.credits * 300)} />
               <DetailRow label="流式" value={selected.streamed ? "是" : "否"} />
               <DetailRow label="请求 ID" value={selected.requestId || "--"} copyable />
               {selected.content ? <DetailRow label="说明" value={selected.content} /> : null}

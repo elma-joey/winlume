@@ -6,6 +6,7 @@ import { useModals } from "@/components/providers";
 import { getConsoleWallet } from "@/lib/console/client";
 import type { ConsoleWallet } from "@/lib/console/types";
 import { remainingAllowancePercent } from "@/lib/billing/model";
+import { displayAllowance } from "@/lib/billing/plans";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -35,7 +36,7 @@ function UsageDialogContent({ open, onOpenChange }: { open: boolean; onOpenChang
     try { remaining = remainingAllowancePercent(wallet.membershipAllowance); } catch { /* Invalid allowance is not a usable percentage. */ }
   }
   const used = remaining === null ? null : Math.round((100 - remaining) * 100) / 100;
-  const money = (value: number) => new Intl.NumberFormat("zh-CN", { style: "currency", currency: wallet?.currency || "CNY", maximumFractionDigits: 2 }).format(value);
+  const money = (value: number) => `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(displayAllowance(value))} 额度`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

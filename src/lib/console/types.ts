@@ -62,6 +62,7 @@ export type ConsoleTopupConfig = {
   currency: string;
   /** ¥1 = this many credits (fixed 1:1 with v2api today) */
   creditsPerUnit: number;
+  topupDiscount?: number;
   minTopup: number;
   maxTopup?: number;
   amountOptions: number[];

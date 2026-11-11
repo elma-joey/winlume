@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "reizo_plan_one_pending_per_org" ON "reizo_plan_purchases" USING btree ("organization_id") WHERE "reizo_plan_purchases"."status" in ('creating','pending','uncertain');

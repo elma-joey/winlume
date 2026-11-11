@@ -17,6 +17,7 @@ import {
   type ConsoleRequestContext,
 } from "./server";
 import { requireConsoleOrganization } from "./workspace";
+import { membership } from "./plan-purchases";
 import type {
   ConsolePaymentOrder,
   ConsoleTopupConfig,
@@ -153,6 +154,7 @@ export interface CreateTopupInput {
   userAgent?: string | null;
   /** Server-issued scope plus caller request ID; retries reuse the same unpaid order. */
   idempotencyKey?: string;
+  expectedPayMoney?: string;
 }
 
 export interface CreateTopupResult {
@@ -202,13 +204,15 @@ export async function createConsoleTopupOrder(
     ? `RZD${createHash("sha256").update(JSON.stringify([input.organizationId, context.userId, input.idempotencyKey])).digest("hex").slice(0, 20)}`
     : newTradeNo();
   const credits = amount * CREDITS_PER_CNY;
-  const payMoney = amount.toFixed(2);
+  const discount = (await membership(context,input.organizationId))?.discount ?? 1;
+  const payMoney = (Math.round(amount * 100 * discount)/100).toFixed(2);
+  if (input.expectedPayMoney && input.expectedPayMoney !== payMoney) throw new ConsoleRequestError("会员折扣已变化，请刷新后核对付款金额。",409,"topup_quote_changed");
   const base = absoluteBaseUrl();
 
   const purchase = buildEpayPurchase(config, {
     type: method,
     outTradeNo: tradeNo,
-    name: `Reizo 充值 ${credits} 积分`,
+    name: `Reizo 充值 ${credits * 300} 额度`,
     money: payMoney,
     device: epayDeviceFromUserAgent(input.userAgent),
     notifyUrl: `${base}/api/pay/epay/notify`,
@@ -247,7 +251,7 @@ export async function getConsoleTopupCashier(organizationId: string, tradeNo: st
   if (!order || order.status !== "pending") throw new ConsoleRequestError("此订单已结束或不属于当前工作区。", 409, "topup_not_pending");
   const base = absoluteBaseUrl();
   const purchase = buildEpayPurchase(config, { type: order.paymentMethod, outTradeNo: order.reference,
-    name: `Reizo 充值 ${order.credits} 积分`, money: order.amount.toFixed(2), device: "pc",
+    name: `Reizo 充值 ${order.credits * 300} 额度`, money: order.amount.toFixed(2), device: "pc",
     notifyUrl: `${base}/api/pay/epay/notify`, returnUrl: `${base}/account/wallet?order=${encodeURIComponent(order.reference)}` });
   return { tradeNo, url: purchase.url, params: purchase.params };
 }

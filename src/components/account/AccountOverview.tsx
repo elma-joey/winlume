@@ -8,6 +8,7 @@ import { useModals } from "@/components/providers";
 import { getConsoleOverview } from "@/lib/console/client";
 import type { ConsoleOverview } from "@/lib/console/types";
 import type { Account } from "@/lib/account";
+import { displayAllowance } from "@/lib/billing/plans";
 
 export default function AccountOverview() {
   const { account, accountLoading, openLogin } = useModals();
@@ -24,7 +25,7 @@ export default function AccountOverview() {
   const error = result?.owner === userId ? result?.error : undefined;
   const wallet = overview?.wallet;
   const allowance = wallet?.membershipAllowance;
-  const balance = !account ? "—" : !wallet ? "读取中…" : wallet.syncStatus === "unavailable" ? "暂不可用" : new Intl.NumberFormat("zh-CN", { style: "currency", currency: wallet.currency || "CNY", maximumFractionDigits: 2 }).format(wallet.availableCredits);
+  const balance = !account ? "—" : !wallet ? "读取中…" : wallet.syncStatus === "unavailable" ? "暂不可用" : `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(displayAllowance(wallet.availableCredits))} 额度`;
   return <section className="ac-panel reizo-overview">
     <div className="ac-panel-heading"><p>我的账户</p><h1>账户概览</h1></div>
     <div className="ac-profile"><AccountAvatar image={account?.image} /><div><h2>{accountLoading ? "正在读取账户…" : account ? account.display_name || account.username : "登录后，查看你的账户"}</h2><p>{account?.email || "个人资料、钱包与会员，都在这里管理。"}</p></div>{account ? <Link className="ac-button" href="/account/personalization">资料与设置 ↗</Link> : <button className="ac-button" disabled={accountLoading} onClick={() => openLogin()}>登录账户 ↗</button>}</div>

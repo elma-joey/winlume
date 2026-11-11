@@ -6,6 +6,7 @@ import { getUserLogs, type NewApiUserLog } from "../newapi/team-client";
 import { DEFAULT_QUOTA_PER_UNIT } from "../catalog/plaza-display";
 import { accountModelPrices, type AccountPriceModel } from "../billing/account-pricing";
 import { INITIAL_BILLING_CONFIGURATION } from "../billing/model";
+import { membership } from "../console/plan-purchases";
 
 /** Missing settlement evidence stays unknown, including failed requests. Explicit zero is retained. */
 export function desktopCharge(row: NewApiUserLog) {
@@ -51,6 +52,7 @@ export async function readDesktopBilling(request: Request) {
   const logs = usageResult.status === "fulfilled" ? usageResult.value : null;
   return {
     organization: { id: ctx.organization.id, name: ctx.organization.name },
+    membership: await membership(ctx.context,ctx.organization.id),
     balance: { availableCredits: wallet?.syncStatus === "ready" ? wallet.availableCredits : null, usedCredits: wallet?.syncStatus === "ready" ? wallet.usedCredits : null },
     billing: { creditsPerCny: 1, plan: { status: "not_configured" as const }, allowBalanceFallback: INITIAL_BILLING_CONFIGURATION.allowBalanceFallback, settlementMode: INITIAL_BILLING_CONFIGURATION.settlementMode },
     usage: { status: logs ? "ready" as const : "unavailable" as const, page, pageSize: 20, total: logs?.total ?? null, items: (logs?.items ?? []).filter(row => row.type === (kind === "consume" ? 2 : 5)).map(desktopCharge) },

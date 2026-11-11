@@ -1,4 +1,5 @@
 "use client";
+import { displayAllowance } from "@/lib/billing/plans";
 
 import Link from "next/link";
 import { ArrowUpRight, CreditCard, Ticket } from "lucide-react";
@@ -227,6 +228,7 @@ export default function AccountWalletContent() {
     customAmount !== null &&
     (!Number.isInteger(customAmount) || customAmount < (topupConfig?.minTopup ?? 1));
   const effectiveAmount = customAmount !== null && !customInvalid ? customAmount : presetAmount;
+  const payable = (Math.round(effectiveAmount*100*(topupConfig?.topupDiscount??1))/100).toFixed(2);
   const canPay =
     Boolean(topupConfig?.enabled) &&
     canManageWallet &&
@@ -239,7 +241,7 @@ export default function AccountWalletContent() {
     if (!returnRef) return null;
     if (!returnOrder) return { tone: "info" as const, text: "正在确认支付结果…" };
     if (returnOrder.status === "success") {
-      return { tone: "info" as const, text: `充值成功，${amount(returnOrder.credits)} 积分已到账。` };
+      return { tone: "info" as const, text: `充值成功，${amount(displayAllowance(returnOrder.credits))} 额度已到账。` };
     }
     if (returnOrder.status === "failed") {
       return { tone: "error" as const, text: "本次支付未完成或已失败；如果已经扣款，请联系客服核对。" };
@@ -263,7 +265,7 @@ export default function AccountWalletContent() {
         code: normalized,
       });
       setCode("");
-      setRedeemMessage(result.credits != null ? `兑换成功，已到账 ${amount(result.credits)} 额度。` : "兑换成功。");
+      setRedeemMessage(result.credits != null ? `兑换成功，已到账 ${amount(displayAllowance(result.credits))} 额度。` : "兑换成功。");
       await Promise.all([loadWorkspace(), loadUsage(organizationId), loadTopup(organizationId)]);
     } catch (reason) {
       setRedeemError(reason instanceof Error ? reason.message : "兑换失败，请稍后重试。");
@@ -280,6 +282,7 @@ export default function AccountWalletContent() {
       const { url, params } = await createConsoleTopup({
         organizationId,
         amount: effectiveAmount,
+        expectedPayMoney: payable,
         paymentMethod: selectedMethod,
       });
       // Full-page navigation to the cashier; state is left as-is on purpose.
@@ -329,9 +332,9 @@ export default function AccountWalletContent() {
         <div className="space-y-6">
           <div className="ac-balances ac-balances-main">
             <article><p>会员月度额度 <span>当期权益</span></p><strong>{allowance.status === "active" ? amount(Number(allowance.remainingUnits)) : "未开通"}</strong><small>{allowance.status === "active" ? `重置日期：${new Date(allowance.resetsAt).toLocaleDateString("zh-CN")}` : "已开通权益以账户实际配置为准"}</small></article>
-            <article><p>账户余额 <span>工作台与 API 共用</span></p><strong>{!accountUsage && overview.wallet.syncStatus === "unavailable" ? "暂不可用" : amount(available)}</strong><small>{overview.wallet.currency} · 按实际模型用量计费</small></article>
+            <article><p>账户余额 <span>工作台与 API 共用</span></p><strong>{!accountUsage && overview.wallet.syncStatus === "unavailable" ? "暂不可用" : amount(displayAllowance(available))}</strong><small>{overview.wallet.currency} · 按实际模型用量计费</small></article>
           </div>
-          <p className="ac-note">累计已用：{!accountUsage && overview.wallet.syncStatus === "unavailable" ? "暂不可用" : amount(used)} · 以当前工作区实际消费为准</p>
+          <p className="ac-note">累计已用：{!accountUsage && overview.wallet.syncStatus === "unavailable" ? "暂不可用" : amount(displayAllowance(used))} · 以当前工作区实际消费为准</p>
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <Card>
@@ -339,7 +342,7 @@ export default function AccountWalletContent() {
                 <CardTitle>在线充值</CardTitle>
                 <CardDescription>
                   {topupConfig?.enabled
-                    ? "支付成功后积分自动到账当前工作区，1 元 = 1 积分。"
+                    ? "支付成功后额度自动到账当前工作区，1 元 = 1 额度。"
                     : "在线充值尚未开通，可先使用兑换码。"}
                 </CardDescription>
               </CardHeader>
@@ -411,7 +414,7 @@ export default function AccountWalletContent() {
                       {!organizationId
                         ? "选择工作区后才能充值。"
                         : canManageWallet
-                          ? `到账工作区：${activeOrganization?.name}　·　约 ${amount(effectiveAmount)} 积分`
+                          ? `到账工作区：${activeOrganization?.name}　·　约 ${amount(displayAllowance(effectiveAmount))} 额度`
                           : "只有工作区 owner 或 admin 可以充值。"}
                     </FieldDescription>
 
@@ -419,7 +422,7 @@ export default function AccountWalletContent() {
 
                     <Button type="button" onClick={startTopup} disabled={!canPay || creatingOrder}>
                       {creatingOrder ? <Spinner data-icon="inline-start" /> : <CreditCard data-icon="inline-start" />}
-                      去支付 ¥{amount(effectiveAmount)}
+                      去支付 ¥{payable}
                     </Button>
                   </div>
                 ) : (
@@ -497,7 +500,7 @@ export default function AccountWalletContent() {
                           <TableRow>
                             <TableHead>时间</TableHead>
                             <TableHead>金额</TableHead>
-                            <TableHead>积分</TableHead>
+                            <TableHead>额度</TableHead>
                             <TableHead>方式</TableHead>
                             <TableHead>状态</TableHead>
                             <TableHead>订单号</TableHead>
@@ -514,7 +517,7 @@ export default function AccountWalletContent() {
                                 <TableCell className="whitespace-nowrap">
                                   ¥{amount(order.amount)}
                                 </TableCell>
-                                <TableCell className="whitespace-nowrap">{amount(order.credits)}</TableCell>
+                                <TableCell className="whitespace-nowrap">{amount(displayAllowance(order.credits))}</TableCell>
                                 <TableCell className="whitespace-nowrap">{order.paymentMethod}</TableCell>
                                 <TableCell>
                                   <Badge variant={status.variant}>{status.label}</Badge>

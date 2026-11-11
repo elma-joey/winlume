@@ -9,6 +9,7 @@ import { consumeRateLimit } from "./rate-limit";
 import { ConsoleRequestError, ensureOrganizationKeyManager, getConsoleWalletDetails } from "../console/server";
 import { requireConsoleOrganization } from "../console/workspace";
 import { createConsoleTopupOrder, getConsolePaymentOrder, getConsoleTopupCashier, getConsoleTopupConfig, getEpayConfig, listConsolePaymentOrders } from "../console/topup";
+import { createPlanPurchase, getPlanOrder, listPlanOrders, membership, planCatalog, planCashier } from "../console/plan-purchases";
 
 const fail = (message: string, status = 400) => { throw new ConsoleRequestError(message, status, "desktop_wallet_error"); };
 const validOrder = (value: unknown): value is string => typeof value === "string" && /^RZ[A-Za-z0-9]{8,62}$/.test(value);
@@ -71,11 +72,14 @@ export async function readDesktopWallet(request: Request) {
   const ctx = await desktopWalletContext(request, expectedOrg);
   const reference = url.searchParams.get("order");
   if (reference && !validOrder(reference)) return fail("订单编号无效。");
-  const [{ wallet }, orders, order] = await Promise.all([getConsoleWalletDetails(ctx.context, ctx.organization.id), listConsolePaymentOrders(ctx.organization.id),
-    reference ? getConsolePaymentOrder(ctx.organization.id, reference) : null]);
+  const [{ wallet }, orders, order, plan, plans, planOrders] = await Promise.all([getConsoleWalletDetails(ctx.context, ctx.organization.id), listConsolePaymentOrders(ctx.organization.id),
+    reference ? reference.startsWith("RZP") ? getPlanOrder(ctx.organization.id,reference) : getConsolePaymentOrder(ctx.organization.id, reference) : null,
+    membership(ctx.context,ctx.organization.id), planCatalog(), listPlanOrders(ctx.organization.id)]);
   if (reference && !order) return fail("当前工作区没有此订单。", 404);
   return { organization: { id: ctx.organization.id, name: ctx.organization.name }, balance: { availableCredits: wallet.availableCredits, currency: wallet.currency, syncStatus: wallet.syncStatus ?? "unavailable" },
-    config: getConsoleTopupConfig(), canTopup: ctx.role === "owner" || ctx.role === "admin", orders, order,
+    config: { ...getConsoleTopupConfig(), topupDiscount: plan?.discount ?? 1 },
+    plans, membership: plan,
+    canTopup: ctx.role === "owner" || ctx.role === "admin", orders: [...orders,...planOrders].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,30), order,
     ...(order?.status === "pending" ? { cashierUrl: cashierUrl(request, ctx, order.reference) } : {}) };
 }
 
@@ -83,10 +87,16 @@ export async function createDesktopTopup(request: Request) {
   const ctx = await desktopWalletContext(request);
   if (!request.headers.get("content-type")?.startsWith("application/json")) return fail("请使用 JSON 提交充值请求。", 415);
   const body = await request.json().catch(() => null);
+  if (body && typeof body.planId === "string") {
+    if (body.organizationId!==ctx.organization.id) return fail("当前工作区已变化，请刷新。",409);
+    const order=await createPlanPurchase(ctx.context,body);
+    return {order,...(order.status==="pending"?{cashierUrl:cashierUrl(request,ctx,order.reference)}:{})};
+  }
   if (!body || !uuid(body.organizationId) || !uuid(body.requestId) || !Number.isSafeInteger(body.amount) || body.amount < 1 || typeof body.paymentMethod !== "string") return fail("充值请求无效，请重新选择金额和支付方式。");
   if (body.organizationId !== ctx.organization.id) return fail("当前工作区已变化，请刷新充值信息后重试。", 409);
   if (ctx.role !== "owner" && ctx.role !== "admin") return fail("当前角色无工作区充值权限。", 403);
   const result = await createConsoleTopupOrder(ctx.context, { organizationId: ctx.organization.id, amount: body.amount, paymentMethod: body.paymentMethod,
+    expectedPayMoney: typeof body.expectedPayMoney==="string"?body.expectedPayMoney:undefined,
     userAgent: request.headers.get("user-agent"), idempotencyKey: `${ctx.session.id}:${body.requestId.toLowerCase()}` });
   const order = await getConsolePaymentOrder(ctx.organization.id, result.tradeNo);
   if (!order) return fail("订单已提交，暂时无法读取状态，请刷新充值记录。", 503);
@@ -105,6 +115,10 @@ export async function desktopCashier(request: Request): Promise<Response> {
   const [session] = await db.select().from(desktopSessions).where(and(eq(desktopSessions.id, ticket.sessionId), eq(desktopSessions.userId, ticket.userId))).limit(1);
   const ctx = await contextForSession(session, ticket.organizationId);
   ensureOrganizationKeyManager(ctx.role);
+  if (ticket.order.startsWith("RZP")) {
+    const hosted=await planCashier(ctx.organization.id,ticket.order);
+    return Response.json(hosted,{headers:{"Cache-Control":"no-store","Referrer-Policy":"no-referrer","X-Content-Type-Options":"nosniff"}});
+  }
   const purchase = await getConsoleTopupCashier(ctx.organization.id, ticket.order);
   const target = new URL(purchase.url);
   if (target.protocol !== "https:" || target.username || target.password || target.hash) return fail("收银台地址配置无效。", 503);

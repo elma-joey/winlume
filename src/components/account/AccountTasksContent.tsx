@@ -8,6 +8,7 @@ import { getConsoleOverview } from "@/lib/console/client";
 import type { ConsoleOverview } from "@/lib/console/types";
 import type { Session } from "@/lib/agent/types";
 import { filterTaskRecords } from "./task-records";
+import { displayAllowance } from "@/lib/billing/plans";
 
 const number = (value: number | string) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(Number(value));
 const time = (value: string) => new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -44,7 +45,7 @@ export default function AccountTasksContent() {
   const wallet = current?.overview?.wallet;
   const allowance = wallet?.membershipAllowance;
   const visible = useMemo(() => filterTaskRecords(current?.sessions ?? [], query, period === "all" ? null : Number(period), current?.syncedAt ?? 0), [current, period, query]);
-  const balance = !account ? "—" : !wallet ? loading ? "读取中…" : "暂不可用" : wallet.syncStatus === "unavailable" ? "暂不可用" : `${number(wallet.availableCredits)} ${wallet.currency}`;
+  const balance = !account ? "—" : !wallet ? loading ? "读取中…" : "暂不可用" : wallet.syncStatus === "unavailable" ? "暂不可用" : `${number(displayAllowance(wallet.availableCredits))} 额度`;
   return <ConsolePage title="任务看板" actions={<button className="ac-subtle" disabled={loading || !account} onClick={() => { setPending(true); setAttempt(value => value + 1); }}>{loading ? "同步中…" : "刷新记录 ↻"}</button>}>
     <div className="ac-dashboard-controls"><span className="ac-status">{account ? loading ? "正在同步" : "账户已连接" : "待登录"}</span><label>记录范围<select value={period} onChange={event => setPeriod(event.target.value)}><option value="all">全部时间</option><option value="1">最近 24 小时</option><option value="7">最近 7 天</option><option value="30">最近 30 天</option></select></label><Link className="ac-subtle" href="/studio">进入工作台 ↗</Link></div>
     <div className="ac-task-metrics">{[["running", "进行中", "正在执行的工作台任务"], ["complete", "已完成", "已交付的工作台任务"], ["queued", "排队中", "等待可用执行名额"], ["attention", "需处理", "待确认需求或执行异常"]].map(([tone, label, hint]) => <article key={tone}><p><i className={tone} />{label}</p><strong>—</strong><small>{hint}</small></article>)}</div>

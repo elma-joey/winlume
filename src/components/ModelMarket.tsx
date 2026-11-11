@@ -12,6 +12,8 @@ import { useModals } from "@/components/providers";
 import PortalHeader from "@/components/PortalHeader";
 import { toolCategorySummaries } from "@/lib/portal/application-category-copy";
 import { formatBalance } from "@/lib/account";
+import { displayAllowance } from "@/lib/billing/plans";
+import { remainingAllowancePercent } from "@/lib/billing/model";
 import { getConsoleOverview } from "@/lib/console/client";
 import type { ConsoleOverview } from "@/lib/console/types";
 import { homepageApiCategories } from "@/lib/portal/homepage-vendors";
@@ -594,10 +596,7 @@ export default function ModelMarket({ initialContent }: { initialContent?: Porta
   const [overview, setOverview] = useState<ConsoleOverview | null>(null);
   const balance = formatBalance(account?.quota, balanceConfig);
   const usedCredits = overview?.wallet.usedCredits ?? null;
-  const availableCredits = overview?.wallet.availableCredits ?? null;
-  const quotaPct = availableCredits != null && usedCredits != null && (availableCredits + usedCredits) > 0
-    ? Math.round((availableCredits / (availableCredits + usedCredits)) * 100)
-    : null;
+  const quotaPct = overview?.wallet.membershipAllowance ? remainingAllowancePercent(overview.wallet.membershipAllowance) : null;
   const activePath = productPaths.find((path) => path.id === activePathId) ?? productPaths[0];
   const stackPaths = stackOrderFrom(activePath.id).slice(0, STACK_VISIBLE);
   const popularApplications = managedApplications.filter((item) => item.enabled && item.group === "popular");
@@ -1173,8 +1172,8 @@ export default function ModelMarket({ initialContent }: { initialContent?: Porta
               </div>
               <div className="portal-usage-stats">
                 <div><span>余额</span><strong>{balance === "余额同步中" ? "—" : balance}</strong></div>
-                <div><span>已消耗 Token</span><strong>{usedCredits != null ? fmtUsage(usedCredits) : "—"}</strong></div>
-                <div className="portal-membership-quota"><span><em>Free</em>会员剩余额度</span><strong>{quotaPct != null ? `${quotaPct}%` : "—"}</strong></div>
+                <div><span>累计消耗额度</span><strong>{usedCredits != null ? fmtUsage(displayAllowance(usedCredits)) : "—"}</strong></div>
+                <div className="portal-membership-quota"><span><em>{overview?.wallet.subscription.status === "active" ? overview.wallet.subscription.name : "未开通"}</em>套餐剩余额度</span><strong>{quotaPct != null ? `${quotaPct}%` : "—"}</strong></div>
               </div>
             </section>
           </div>

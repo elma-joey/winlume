@@ -1,3 +1,4 @@
+import { membership } from "@/lib/console/plan-purchases";
 import {
   ConsoleRequestError,
   consoleError,
@@ -47,7 +48,7 @@ export async function GET(request: Request) {
 
     return consoleJson({
       organizationId,
-      config: getConsoleTopupConfig(),
+      config: { ...getConsoleTopupConfig(), topupDiscount: organizationId ? (await membership(context,organizationId))?.discount ?? 1 : 1 },
       orders,
       order,
     });
@@ -79,6 +80,7 @@ export async function POST(request: Request) {
       amount: Number(body.amount),
       paymentMethod: typeof body.paymentMethod === "string" ? body.paymentMethod : "",
       userAgent: request.headers.get("user-agent"),
+      expectedPayMoney: typeof body.expectedPayMoney === "string" ? body.expectedPayMoney : undefined,
     });
 
     return consoleJson(result, { status: 201 });

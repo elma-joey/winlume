@@ -113,6 +113,20 @@
       "when": 1792022400000,
       "tag": "0015_desktop_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1794387454940,
+      "tag": "0016_kyren_plan_purchases",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794387795070,
+      "tag": "0017_kyren_pending_order_guard",
+      "breakpoints": true
     }
   ]
 }

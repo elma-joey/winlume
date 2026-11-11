@@ -3,6 +3,7 @@ import { clearOAuthWelcome, markOAuthWelcome } from "@/lib/login-welcome";
 import { DEFAULT_QUOTA_PER_UNIT } from "@/lib/catalog/plaza-display";
 
 export interface BalanceConfig {
+  allowance_per_cny?: number;
   quota_per_unit?: number;
   quota_display_type?: string;
   display_in_currency?: boolean;
@@ -191,6 +192,7 @@ export function formatBalance(quota: number | undefined, config: BalanceConfig |
     ? (config.custom_currency_exchange_rate || 1)
     : 1;
   const amount = (quota / perUnit) * multiplier;
+  if (isCredits && config.allowance_per_cny === 300) return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(amount * 300)} 额度`;
   const configuredSymbol = config?.quota_display_type === "custom"
     ? (config.custom_currency_symbol || "¥")
     : "$";

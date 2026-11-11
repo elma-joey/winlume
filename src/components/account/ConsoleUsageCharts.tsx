@@ -35,7 +35,7 @@ function DailyTrend({ points }: { points: ConsoleUsagePoint[] }) {
   const area = `${line} L${x(points.length - 1).toFixed(1)} ${(pad.top + innerH).toFixed(1)} L${x(0).toFixed(1)} ${(pad.top + innerH).toFixed(1)} Z`;
   const ticks = [0, 0.5, 1].map((ratio) => ({
     y: pad.top + innerH * (1 - ratio),
-    label: number(scaleY * ratio),
+    label: number(scaleY * ratio * 300),
   }));
   const labelEvery = Math.max(1, Math.ceil(points.length / 7));
 
@@ -67,7 +67,7 @@ function DailyTrend({ points }: { points: ConsoleUsagePoint[] }) {
       <path d={line} className="stroke-primary-500" fill="none" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
       {points.map((point, index) => (
         <circle key={`dot-${point.date}`} cx={x(index)} cy={y(point.credits)} r="2.5" className="fill-primary-500">
-          <title>{`${point.date} · ${number(point.credits)} 额度`}</title>
+          <title>{`${point.date} · ${number(point.credits * 300)} 额度`}</title>
         </circle>
       ))}
       {points.map((point, index) => (
@@ -152,7 +152,7 @@ export function ConsoleUsageCharts({
               items={models.map((item) => ({
                 id: item.model,
                 label: item.model,
-                hint: `${number(item.credits)} · ${item.requests} 次`,
+                hint: `${number(item.credits * 300)} · ${item.requests} 次`,
                 value: item.credits || item.requests,
               }))}
               emptyTitle="暂无模型用量"
