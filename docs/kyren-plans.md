@@ -23,6 +23,8 @@ Kyren remains configured to https://payhook.v2api.top/kyren. New checkout metada
 
 A request UUID deterministically maps to one purchase. A partial unique index permits at most one creating/pending/uncertain order per organization. Kyren checkout creation has no documented idempotency support, so network uncertainty is persisted and never automatically creates another checkout. Investigate an uncertain order through merchant orders and the saved nativeReference before changing its status. Do not clear it merely because a request timed out.
 
+Web and desktop generate different request UUIDs. A second request for the same workspace and exact plan offer resumes its existing pending checkout; it must not create another native or Kyren order. Other plans remain blocked until the current order is handled, and creating/uncertain records never become payable merely through a retry. The web plan card shows **继续付款** for a pending matching plan. Purchase errors persist across background catalog refreshes; fetching the catalog successfully does not mean a failed purchase succeeded.
+
 Paid events lock the purchase row, deduplicate event ID and hash and settle the same native subscription order using the gateway's transactional idempotent completion. If delivery fails, return non-2xx for Worker retry. Refund events enter refund_review; allowance revocation is manual until a refund policy and native subscription linkage are implemented. Do not approve refunds assuming automatic revocation.
 
 ## Deployment

@@ -19,7 +19,10 @@ beforeEach(()=>{
  const nativeParams={pid:'merchant',out_trade_no:'SUBUSR1NOfixture',money:'29.00',type:'alipay',sign_type:'MD5',sign:''};nativeParams.sign=epaySign(nativeParams,'fixture-epay');
  mocks.native.mockResolvedValue({data:nativeParams});
  mocks.db.mockReturnValue({
-  select:()=>({from:()=>({where:(condition:SQL)=>({limit:async()=>row&&new PgDialect().sqlToQuery(condition).params.includes(row.id)?[row]:[],orderBy:()=>({limit:async()=>[]})})})}),
+  select:()=>({from:()=>({where:(condition:SQL)=>({limit:async()=>{
+   const params=new PgDialect().sqlToQuery(condition).params;
+   return row&&(params.includes(row.id)||(params.includes(row.organizationId)&&params.includes(row.status)))?[row]:[];
+  },orderBy:()=>({limit:async()=>[]})})})}),
   insert:()=>({values:(value:Record<string,unknown>)=>({onConflictDoNothing:()=>({returning:async()=>{if(row)return[];row={...value,createdAt:new Date(),paidAt:null};return[row]}})})}),
   update:()=>({set:(value:Record<string,unknown>)=>({where:()=>{Object.assign(row!,value);const result=Promise.resolve();return Object.assign(result,{returning:async()=>[row]})}})}),
  });
@@ -43,6 +46,37 @@ it('retains an uncertain checkout without automatically creating another order',
  uncertain=true;await expect(createPlanPurchase(context as never,input)).rejects.toThrow('待核对');
  expect(row?.status).toBe('uncertain');
  expect((await createPlanPurchase(context as never,input)).status).toBe('crediting');
+ expect(mocks.native).toHaveBeenCalledOnce();expect(fetcher.mock.calls.filter(call=>call[1]?.method==='POST')).toHaveLength(1);
+});
+it('resumes the same pending plan when another client submits a new request identity',async()=>{
+ const first=await createPlanPurchase(context as never,input);
+ const second=await createPlanPurchase(context as never,{...input,requestId:'44444444-4444-4444-8444-444444444444'});
+ expect(second.reference).toBe(first.reference);expect(second.status).toBe('pending');
+ expect(mocks.native).toHaveBeenCalledOnce();expect(fetcher.mock.calls.filter(call=>call[1]?.method==='POST')).toHaveLength(1);
+});
+it('keeps another pending plan distinct instead of charging for an unselected offer',async()=>{
+ await createPlanPurchase(context as never,input);
+ await expect(createPlanPurchase(context as never,{...input,planId:'plus',requestId:'44444444-4444-4444-8444-444444444444'})).rejects.toThrow('未完成');
+ expect(mocks.native).toHaveBeenCalledOnce();expect(fetcher.mock.calls.filter(call=>call[1]?.method==='POST')).toHaveLength(1);
+});
+it('does not create another checkout for an uncertain order under a new request identity',async()=>{
+ uncertain=true;await expect(createPlanPurchase(context as never,input)).rejects.toThrow('待核对');
+ await expect(createPlanPurchase(context as never,{...input,requestId:'44444444-4444-4444-8444-444444444444'})).rejects.toThrow('核对');
+ expect(mocks.native).toHaveBeenCalledOnce();expect(fetcher.mock.calls.filter(call=>call[1]?.method==='POST')).toHaveLength(1);
+});
+it('resumes a concurrent pending checkout after losing the unique-order insert',async()=>{
+ const first=await createPlanPurchase(context as never,input);
+ const saved=row;row=undefined;
+ const db=mocks.db.mock.results[0].value;
+ db.insert=()=>({values:()=>({onConflictDoNothing:()=>({returning:async()=>{row=saved;return[]}})})});
+ const resumed=await createPlanPurchase(context as never,{...input,requestId:'44444444-4444-4444-8444-444444444444'});
+ expect(resumed.reference).toBe(first.reference);
+ expect(mocks.native).toHaveBeenCalledOnce();expect(fetcher.mock.calls.filter(call=>call[1]?.method==='POST')).toHaveLength(1);
+});
+it('does not resume a pending checkout whose offer amount has changed',async()=>{
+ await createPlanPurchase(context as never,input);
+ Object.assign(row!,{amount:'28.00'});
+ await expect(createPlanPurchase(context as never,{...input,requestId:'44444444-4444-4444-8444-444444444444'})).rejects.toThrow('未完成');
  expect(mocks.native).toHaveBeenCalledOnce();expect(fetcher.mock.calls.filter(call=>call[1]?.method==='POST')).toHaveLength(1);
 });
 it('rejects unauthorized and already active plan purchases before creating any order',async()=>{

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { planPurchases, kyrenEvents } from "../platform/db/schema";
 import { requirePlatformDb } from "../platform/db/client";
@@ -61,6 +61,24 @@ export async function planCashier(organizationId: string, id: string) {
   if (!row || row.status !== "pending" || !row.checkoutUrl || !row.checkoutId || !row.checkoutExpiresAt || row.checkoutExpiresAt.getTime() <= Date.now()) throw fail("套餐订单已结束或正在核对，请刷新。");
   return { mode: "hosted" as const, url: kyrenCashierUrl(row.checkoutUrl,row.checkoutId), checkoutId: row.checkoutId, reference: row.id, amount: row.amount, currency: "CNY" };
 }
+async function resumePlanPurchase(db: ReturnType<typeof requirePlatformDb>, organizationId: string, plan: typeof REIZO_PLANS[number]) {
+  const [existing] = await db.select().from(planPurchases).where(and(
+    eq(planPurchases.organizationId, organizationId),
+    inArray(planPurchases.status, ["creating", "pending", "uncertain"]),
+  )).limit(1);
+  if (!existing) return null;
+  if (existing.status !== "pending") throw fail("套餐订单正在创建或核对，请稍后刷新，请勿重复购买。");
+  if (existing.planId !== plan.id || existing.productId !== plan.productId ||
+      moneyMinor(existing.amount) !== plan.price * 100 || existing.allowance !== plan.allowance) {
+    throw fail("已有未完成的套餐订单，请先在订单记录中继续付款。");
+  }
+  if (!existing.nativeReference || !existing.checkoutId || !existing.checkoutUrl ||
+      !existing.checkoutExpiresAt || existing.checkoutExpiresAt.getTime() <= Date.now()) {
+    throw fail("套餐订单状态待核对，请刷新或联系支持，请勿重复购买。");
+  }
+  kyrenCashierUrl(existing.checkoutUrl, existing.checkoutId);
+  return orderView(existing);
+}
 export async function createPlanPurchase(context: ConsoleRequestContext, input: unknown) {
   const parsed = z.object({ organizationId:z.string().uuid(), planId:z.enum(["core","plus","pro","max"]), requestId:z.string().uuid() }).strict().safeParse(input);
   if (!parsed.success) throw fail("套餐购买参数无效。",400);
@@ -75,10 +93,16 @@ export async function createPlanPurchase(context: ConsoleRequestContext, input: 
   const pat = await organizationPat(context,organizationId);
   await listPlanOrders(organizationId);
   if (await currentPlan(pat)) throw fail("当前套餐尚未到期，请到期后续购。");
+  const pending = await resumePlanPurchase(db, organizationId, plan);
+  if (pending) return pending;
   const nativePlanId = await verifyNativePlan(plan,pat);
   await planCatalog();
   const [claimed] = await db.insert(planPurchases).values({ id,organizationId,userId:context.userId,planId,productId:plan.productId,nativePlanId,amount:plan.price.toFixed(2),allowance:plan.allowance,status:"creating" }).onConflictDoNothing().returning();
-  if (!claimed) throw fail("订单正在创建，请刷新后继续付款。");
+  if (!claimed) {
+    const concurrent = await resumePlanPurchase(db, organizationId, plan);
+    if (concurrent) return concurrent;
+    throw fail("订单状态已变化，请刷新后重试。");
+  }
   try {
     const native = await gatewayPlanRequest("/api/subscription/epay/pay",pat,{plan_id:nativePlanId,payment_method:"alipay"});
     const params = z.record(z.string(),z.string()).parse(native.data);
