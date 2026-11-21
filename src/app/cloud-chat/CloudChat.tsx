@@ -217,6 +217,9 @@ function CloudConversation({ session, onBack, onUnauthorized, onFinish }: {
   }
 
   const busy = sending || chat.streaming || Boolean(bundle?.activeRun);
+  const replyError = chat.error?.includes("额度不足")
+    ? "模型额度不足，请检查工作区额度。"
+    : "此次回复未完成。";
   return (
     <section className={styles.conversation} aria-label="会话">
       <header className={styles.conversationHeader}>
@@ -239,7 +242,7 @@ function CloudConversation({ session, onBack, onUnauthorized, onFinish }: {
       </div>
       <div className={styles.composerArea}>
         {(loadError || sendError || chat.error) && <p className={styles.error} role="alert">
-          {loadError || sendError || "此次回复未完成。"} <button type="button" onClick={() => { setSendError(""); chat.clearError(); void refresh(); }}>刷新会话</button>
+          {loadError || sendError || replyError} <button type="button" onClick={() => { setSendError(""); chat.clearError(); void refresh(); }}>刷新会话</button>
         </p>}
         <form className={styles.composer} onSubmit={submit}>
           <textarea aria-label="消息" placeholder="发消息" rows={1} value={draft} onChange={(event) => setDraft(event.target.value)} />
