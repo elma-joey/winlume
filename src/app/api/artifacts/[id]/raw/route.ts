@@ -5,6 +5,20 @@ import { webStore } from "@/lib/host/web/store-singleton";
 
 type IdContext = { params: Promise<{ id: string }> };
 
+const imageExtensions: Record<string, string> = {
+  "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp",
+  "image/gif": "gif", "image/bmp": "bmp", "image/avif": "avif", "image/heic": "heic",
+};
+
+function imageDownloadDisposition(name: string, mimeType: string): string {
+  const extension = imageExtensions[mimeType.toLowerCase()] ?? "bin";
+  const base = Array.from(name.toWellFormed().replace(/[\r\n<>:"/\\|?*]/g, "-").trim())
+    .slice(0, 60).join("").replace(/\.(?:png|jpe?g|webp|gif|bmp|avif|heic)$/i, "");
+  const encoded = encodeURIComponent(`${base || "reizo-image"}.${extension}`)
+    .replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="reizo-image.${extension}"; filename*=UTF-8''${encoded}`;
+}
+
 /**
  * GET /api/artifacts/[id]/raw — raw bytes with the artifact's real
  * mimeType, for direct use as an <img src> (or any binary download).
@@ -23,6 +37,10 @@ export async function GET(request: NextRequest, context: IdContext) {
   const artifact = await webStore.artifacts.get(userId, id);
   if (!artifact) {
     return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
+  }
+  const download = request.nextUrl.searchParams.get("download") === "1";
+  if (download && artifact.kind !== "image") {
+    return NextResponse.json({ error: "Image artifact not found" }, { status: 404 });
   }
 
   const size = await webStore.artifacts.contentSize(userId, id);
@@ -75,9 +93,9 @@ export async function GET(request: NextRequest, context: IdContext) {
     status: partial ? 206 : 200,
     headers: {
       "Content-Type": artifact.mimeType || "application/octet-stream",
-      "Cache-Control": "private, max-age=31536000, immutable",
+      "Cache-Control": download ? "private, no-store" : "private, max-age=31536000, immutable",
       "X-Content-Type-Options": "nosniff",
-      "Content-Disposition": "inline",
+      "Content-Disposition": download ? imageDownloadDisposition(artifact.name, artifact.mimeType) : "inline",
       "Content-Length": String(contentLength),
       ...(artifact.kind === "video" ? { "Accept-Ranges": "bytes" } : {}),
       ...(partial ? { "Content-Range": `bytes ${start}-${end}/${size}` } : {}),

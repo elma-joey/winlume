@@ -15,6 +15,8 @@ import { composeOutboundMessage, createPastedBlock, readFileAsText } from "@/lib
 import { isImageGenerationModel } from "@/lib/studio/image-model";
 import { getDefaultModel } from "@/lib/studio/prefs";
 import { CloudModelPicker } from "./CloudModelPicker";
+import { CloudImage } from "./CloudImage";
+import { useCloudQuota } from "./useCloudQuota";
 import { CLOUD_ATTACHMENT_ACCEPT, MAX_CLOUD_ATTACHMENTS, toCloudAttachment, uploadCloudAttachment, type CloudAttachment } from "./cloud-attachments";
 import styles from "./cloud-chat.module.css";
 
@@ -73,15 +75,18 @@ function Loading() {
   return <LoaderCircle size={18} className={styles.loading} role="status" aria-label="加载中" />;
 }
 
-function RemainingQuota() {
+function RemainingQuota({ quota }: { quota: number | null }) {
   const { account, balanceConfig } = useModals();
   const balance = formatBalance(account?.quota, balanceConfig);
-  const text = balance === "余额同步中" ? "额度待同步" : `剩余 ${balance}`;
+  const text = quota !== null
+    ? `剩余 ${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(quota)} 额度`
+    : balance === "余额同步中" ? "额度待同步" : `钱包 ${balance}`;
   return <span className={styles.quota} title={text} aria-label={text}><Wallet size={14} aria-hidden /><span>{text}</span></span>;
 }
 
 function CloudWorkspace() {
   const { account, openLogin, refreshAccount, signOut } = useModals();
+  const { quota, refresh: refreshQuota, refreshAfterUse } = useCloudQuota();
   const [sessions, setSessions] = useState<Session[] | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectFilter, setProjectFilter] = useState("");
@@ -113,7 +118,7 @@ function CloudWorkspace() {
     setError(failure ? errorMessage(failure, "无法加载会话或项目，请重试。") : "");
   }, [onUnauthorized]);
   useRefreshWhileVisible(refresh, 10000);
-  useRefreshWhileVisible(refreshAccount, 60000);
+  useRefreshWhileVisible(refreshQuota, 15000);
 
   const scope = projectFilter === UNCATEGORIZED || projects.some((project) => project.id === projectFilter) ? projectFilter : "";
   const groups = [
@@ -179,7 +184,7 @@ function CloudWorkspace() {
       <aside className={styles.sidebar} aria-label="云会话列表">
         <header className={styles.sidebarHeader}>
           <div className={styles.brand}><Cloud size={19} /> <h1>云会话</h1></div>
-          <RemainingQuota />
+          <RemainingQuota quota={quota} />
           <button type="button" className={styles.primary} onClick={addSession} disabled={creating}>
             {creating ? <Loading /> : <Plus size={17} />} 新建
           </button>
@@ -208,8 +213,8 @@ function CloudWorkspace() {
         </footer>
       </aside>
       {selected
-        ? <CloudConversation key={selected.id} session={selected} projects={projects} onBack={() => selectSession("")} onUnauthorized={onUnauthorized}
-          onChange={refresh} onFinish={() => { void refresh(); void refreshAccount(); }} onBalanceChange={refreshAccount} />
+        ? <CloudConversation key={selected.id} session={selected} projects={projects} quota={quota} onBack={() => selectSession("")} onUnauthorized={onUnauthorized}
+          onChange={refresh} onFinish={() => { void refresh(); refreshAfterUse(); }} onBalanceChange={refreshAfterUse} />
         : <section className={styles.blank}><Cloud size={32} strokeWidth={1.5} /><h2>选择会话</h2></section>}
       <Modal open={projectOpen} onClose={closeProject} label="新建项目">
         <form className={styles.sheetPanel} onSubmit={addProject}>
@@ -225,9 +230,10 @@ function CloudWorkspace() {
   );
 }
 
-function CloudConversation({ session, projects, onBack, onUnauthorized, onChange, onFinish, onBalanceChange }: {
+function CloudConversation({ session, projects, quota, onBack, onUnauthorized, onChange, onFinish, onBalanceChange }: {
   session: Session;
   projects: Project[];
+  quota: number | null;
   onBack: () => void;
   onUnauthorized: () => void;
   onChange: () => void;
@@ -248,7 +254,7 @@ function CloudConversation({ session, projects, onBack, onUnauthorized, onChange
   const request = useRef(0);
   const modelRequest = useRef(0);
   const artifactRequest = useRef(0);
-  const pendingImages = useRef(new Set<string>());
+  const finishedImages = useRef<Set<string> | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const snapshot = useRef("");
   const history = useRef<HTMLDivElement>(null);
@@ -292,8 +298,10 @@ function CloudConversation({ session, projects, onBack, onUnauthorized, onChange
     try {
       const next = await listArtifacts(session.id);
       if (id !== artifactRequest.current) return;
-      const completed = next.some((artifact) => pendingImages.current.has(artifact.id) && artifact.status !== "pending");
-      pendingImages.current = new Set(next.filter(({ kind, status }) => kind === "image" && status === "pending").map(({ id }) => id));
+      const settled = next.filter(({ kind, status, messageId }) => kind === "image" && messageId && status !== "pending").map(({ id }) => id);
+      const previous = finishedImages.current;
+      const completed = previous !== null && settled.some((id) => !previous.has(id));
+      finishedImages.current = new Set(settled);
       setArtifacts(next);
       if (completed) onBalanceChange();
     } catch (error) {
@@ -431,7 +439,7 @@ function CloudConversation({ session, projects, onBack, onUnauthorized, onChange
       <header className={styles.conversationHeader}>
         <button type="button" onClick={onBack} className={styles.iconButton} aria-label="返回会话列表" title="返回会话列表"><ArrowLeft size={20} /></button>
         <h2>{bundle?.session.title ?? session.title}</h2>
-        <RemainingQuota />
+        <RemainingQuota quota={quota} />
         <CloudModelPicker models={options ?? null} imageMode={imageMode} value={displayedModel}
           disabled={!bundle || busy || pendingSettings !== null} onChange={changeModel} />
       </header>
@@ -494,10 +502,6 @@ function CloudArtifact({ artifact }: { artifact: Artifact }) {
   const url = `/api/artifacts/${encodeURIComponent(artifact.id)}/${artifact.kind === "sheet" ? "xlsx" : "raw"}`;
   if (artifact.status === "pending") return <span className={styles.artifactState}><Loading />{artifact.name}</span>;
   if (artifact.status === "failed") return <span className={styles.error} role="alert">{artifact.error || `${artifact.name}失败`}</span>;
-  if (artifact.kind === "image") {
-    // The authenticated artifact endpoint serves private, already-sized bytes.
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img className={styles.artifactImage} src={url} alt={artifact.name} loading="lazy" />;
-  }
+  if (artifact.kind === "image") return <CloudImage artifact={artifact} url={url} />;
   return <a className={styles.artifactState} href={url} download={artifact.name}><FileText size={15} aria-hidden />{artifact.name}</a>;
 }

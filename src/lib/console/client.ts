@@ -62,8 +62,8 @@ export function getConsoleOverview() {
   return request<ConsoleOverview>("/api/console/overview", { cache: "no-store" });
 }
 
-export function getConsoleWallet() {
-  return request<ConsoleWalletDetails>("/api/console/wallet", { cache: "no-store" });
+export function getConsoleWallet(signal?: AbortSignal) {
+  return request<ConsoleWalletDetails>("/api/console/wallet", { cache: "no-store", signal });
 }
 
 export function redeemConsoleCode(input: { organizationId?: string | null; code: string }) {

@@ -122,6 +122,11 @@ it("persists uploaded references and the generated image without replacing the c
     expect(generated?.status).toBe("ready");
     const image = await rawArtifact.GET(new NextRequest(`http://localhost/api/artifacts/${generated.id}/raw`), { params: Promise.resolve({ id: generated.id }) });
     expect(image.headers.get("content-type")).toBe("image/png");
+    expect(image.headers.get("content-disposition")).toBe("inline");
     expect(Buffer.from(await image.arrayBuffer()).toString("base64")).toBe(fixture.png);
+    const download = await rawArtifact.GET(new NextRequest(`http://localhost/api/artifacts/${generated.id}/raw?download=1`), { params: Promise.resolve({ id: generated.id }) });
+    expect(download.headers.get("content-disposition")).toBe(`attachment; filename="reizo-image.png"; filename*=UTF-8''${encodeURIComponent("生成图片.png")}`);
+    expect(download.headers.get("cache-control")).toBe("private, no-store");
+    expect(Buffer.from(await download.arrayBuffer()).toString("base64")).toBe(fixture.png);
   });
 }, 30_000);

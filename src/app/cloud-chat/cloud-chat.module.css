@@ -85,12 +85,19 @@
 .attachmentChip button:hover { background: var(--accent-soft); }
 .artifactState { display: flex; width: fit-content; min-height: 36px; margin-block-start: 8px; overflow-wrap: anywhere; }
 .artifactImage { display: block; width: auto; max-width: 100%; max-height: 64dvh; margin-block-start: 8px; border-radius: 10px; object-fit: contain; }
+.imageButton { display: block; width: fit-content; max-width: 100%; border-radius: 10px; text-align: start; cursor: zoom-in; }
+.imagePreview { display: flex; flex: 1; min-height: 0; width: min(100%, 1024px); margin-inline: auto; flex-direction: column; }
+.imagePreview h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imageActions { display: flex; flex-shrink: 0; align-items: center; gap: 4px; }
+.imageActions a { text-decoration: none; }
+.imageStage { flex: 1; min-height: 0; padding: 8px; background: var(--panel); }
+.imageStage img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .composer { display: flex; align-items: end; gap: 8px; padding: 6px; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); }
 .composer:focus-within { border-color: var(--accent); }
 .composer textarea { flex: 1; min-width: 0; min-height: 44px; max-height: 144px; padding: 10px; field-sizing: content; resize: none; background: transparent; outline: none; font-size: 16px; }
 .send { background: var(--accent-soft); color: var(--accent); }
 .primary:disabled, .send:disabled { cursor: default; opacity: .45; }
-.workspace :is(button, a, select):focus-visible, .welcome button:focus-visible, .sheetPanel :is(button, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.workspace :is(button, a, select):focus-visible, .welcome button:focus-visible, .sheetPanel :is(button, input, a):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .empty, .error { padding: 8px; font-size: 13px; }
 .empty { color: var(--muted); }
 .error { color: var(--danger); }
