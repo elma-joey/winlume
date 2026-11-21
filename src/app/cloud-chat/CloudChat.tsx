@@ -5,7 +5,10 @@ import { ArrowLeft, ArrowUp, Cloud, LoaderCircle, LogOut, Plus } from "lucide-re
 import { useModals } from "@/components/providers";
 import { useStudioChat } from "@/components/studio/useStudioChat";
 import type { Session } from "@/lib/agent/types";
-import { createSession, getAvailableStudioChatModel, getSessionBundle, listSessions, StudioApiError } from "@/lib/studio/api";
+import {
+  createSession, getAvailableStudioChatModel, getSessionBundle,
+  listAvailableStudioChatModels, listSessions, patchSession, StudioApiError,
+} from "@/lib/studio/api";
 import { getDefaultModel } from "@/lib/studio/prefs";
 import styles from "./cloud-chat.module.css";
 
@@ -157,11 +160,14 @@ function CloudConversation({ session, onBack, onUnauthorized, onFinish }: {
   const [loadError, setLoadError] = useState("");
   const [sendError, setSendError] = useState("");
   const [sending, setSending] = useState(false);
+  const [models, setModels] = useState<string[] | null>(null);
+  const [pendingModel, setPendingModel] = useState<string | null>(null);
   const request = useRef(0);
+  const modelRequest = useRef(0);
   const snapshot = useRef("");
   const history = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
-  useEffect(() => () => { ++request.current; }, []);
+  useEffect(() => () => { ++request.current; ++modelRequest.current; }, []);
 
   const refresh = useCallback(async () => {
     const id = ++request.current;
@@ -182,8 +188,22 @@ function CloudConversation({ session, onBack, onUnauthorized, onFinish }: {
   }, [session.id, onUnauthorized]);
   useRefreshWhileVisible(refresh, 5000);
 
+  const refreshModels = useCallback(async () => {
+    const id = ++modelRequest.current;
+    try {
+      const available = await listAvailableStudioChatModels();
+      if (id === modelRequest.current) setModels(available);
+    } catch (error) {
+      if (id !== modelRequest.current) return;
+      if (error instanceof StudioApiError && error.status === 401) onUnauthorized();
+      setModels([]);
+    }
+  }, [onUnauthorized]);
+  useRefreshWhileVisible(refreshModels, 30000);
+
+  const savedModel = bundle?.session.model ?? session.model;
   const chat = useStudioChat({
-    sessionId: session.id, model: bundle?.session.model ?? session.model, initialMessages: bundle?.messages,
+    sessionId: session.id, model: savedModel, initialMessages: bundle?.messages,
     activeRun: bundle?.activeRun, onUnauthorized,
     onFinish: () => { void refresh(); onFinish(); },
   });
@@ -193,10 +213,32 @@ function CloudConversation({ session, onBack, onUnauthorized, onFinish }: {
     if (pane && followLatest.current) pane.scrollTop = pane.scrollHeight;
   }, [chat.messages, chat.streaming]);
 
+  const busy = sending || chat.streaming || Boolean(bundle?.activeRun);
+  const displayedModel = pendingModel ?? (models?.includes(savedModel) ? savedModel : "");
+
+  async function changeModel(model: string) {
+    if (!bundle || busy || pendingModel || model === savedModel || !models?.includes(model)) return;
+    setPendingModel(model);
+    setSendError("");
+    chat.clearError();
+    try {
+      const saved = await patchSession(session.id, { model });
+      ++request.current;
+      snapshot.current = "";
+      setBundle((current) => current && { ...current, session: saved });
+    } catch (error) {
+      if (error instanceof StudioApiError && error.status === 401) onUnauthorized();
+      setSendError(errorMessage(error, "无法切换模型，请重试。"));
+    } finally {
+      setPendingModel(null);
+      void refresh();
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = draft.trim();
-    if (!text || !bundle || bundle.activeRun || chat.streaming || sending) return;
+    if (!text || !bundle || busy || pendingModel) return;
     setSending(true);
     setSendError("");
     followLatest.current = true;
@@ -216,7 +258,6 @@ function CloudConversation({ session, onBack, onUnauthorized, onFinish }: {
     }
   }
 
-  const busy = sending || chat.streaming || Boolean(bundle?.activeRun);
   const replyError = chat.error?.includes("额度不足")
     ? "模型额度不足，请检查工作区额度。"
     : "此次回复未完成。";
@@ -225,6 +266,12 @@ function CloudConversation({ session, onBack, onUnauthorized, onFinish }: {
       <header className={styles.conversationHeader}>
         <button type="button" onClick={onBack} className={styles.iconButton} aria-label="返回会话列表" title="返回会话列表"><ArrowLeft size={20} /></button>
         <h2>{bundle?.session.title ?? session.title}</h2>
+        <select className={styles.modelSelect} aria-label="切换模型" title={displayedModel || "切换模型"}
+          value={displayedModel} disabled={!bundle || busy || pendingModel !== null || !models?.length}
+          onChange={(event) => void changeModel(event.currentTarget.value)}>
+          <option value="" disabled>{models === null ? "加载模型…" : models.length ? "自动选择模型" : "暂无可用模型"}</option>
+          {models?.map((model) => <option key={model} value={model}>{model}</option>)}
+        </select>
       </header>
       <div ref={history} className={styles.history} onScroll={(event) => {
         const pane = event.currentTarget;
@@ -242,11 +289,11 @@ function CloudConversation({ session, onBack, onUnauthorized, onFinish }: {
       </div>
       <div className={styles.composerArea}>
         {(loadError || sendError || chat.error) && <p className={styles.error} role="alert">
-          {loadError || sendError || replyError} <button type="button" onClick={() => { setSendError(""); chat.clearError(); void refresh(); }}>刷新会话</button>
+          {loadError || sendError || replyError} <button type="button" onClick={() => { setSendError(""); chat.clearError(); void refresh(); void refreshModels(); }}>刷新会话</button>
         </p>}
         <form className={styles.composer} onSubmit={submit}>
           <textarea aria-label="消息" placeholder="发消息" rows={1} value={draft} onChange={(event) => setDraft(event.target.value)} />
-          <button className={styles.send} type="submit" title="发送" aria-label="发送" disabled={!bundle || busy || !draft.trim()}>
+          <button className={styles.send} type="submit" title="发送" aria-label="发送" disabled={!bundle || busy || pendingModel !== null || !draft.trim()}>
             <ArrowUp size={20} />
           </button>
         </form>

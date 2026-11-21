@@ -1,15 +1,16 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { getAvailableStudioChatModel } from "./api";
+import { getAvailableStudioChatModel, listAvailableStudioChatModels } from "./api";
 
 afterEach(() => vi.unstubAllGlobals());
 
 it("replaces an unavailable saved model with a live chat model", async () => {
   const fetch = vi.fn(async () => Response.json({
-    models: ["gpt-image-2", "gpt-6.1-sol", "gpt-6.2-sol"],
+    models: ["gpt-image-2", "veo-3.1-fast", "whisper-1", "text-embedding-3-small", "gpt-6.1-sol", "gpt-6.2-sol"],
     capabilities: [{ id: "chat", availability: "available" }],
   }));
   vi.stubGlobal("fetch", fetch);
 
+  await expect(listAvailableStudioChatModels()).resolves.toEqual(["gpt-6.1-sol", "gpt-6.2-sol"]);
   await expect(getAvailableStudioChatModel("gpt-4o-mini")).resolves.toBe("gpt-6.1-sol");
   await expect(getAvailableStudioChatModel("gpt-6.2-sol")).resolves.toBe("gpt-6.2-sol");
   expect(fetch).toHaveBeenCalledWith("/api/capabilities", expect.objectContaining({

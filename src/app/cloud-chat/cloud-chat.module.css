@@ -35,6 +35,8 @@
 .sidebarHeader, .account { justify-content: space-between; }
 .sidebarHeader h1, .conversationHeader h2 { font-size: 16px; font-weight: 650; }
 .conversationHeader h2, .account span, .session { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modelSelect { flex-shrink: 0; width: min(46%, 188px); min-height: 44px; margin-inline-start: auto; padding: 0 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--ink); font-size: 14px; text-overflow: ellipsis; cursor: pointer; }
+.modelSelect:disabled { color: var(--muted); cursor: default; }
 .brand { display: flex; gap: 8px; align-items: center; color: var(--ink); text-decoration: none; }
 .brand svg { color: var(--accent); }
 .sessionList, .history { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; }
@@ -59,7 +61,7 @@
 .composer textarea { flex: 1; min-width: 0; min-height: 44px; max-height: 144px; padding: 10px; field-sizing: content; resize: none; background: transparent; outline: none; font-size: 16px; }
 .send { background: var(--accent-soft); color: var(--accent); }
 .primary:disabled, .send:disabled { cursor: default; opacity: .45; }
-.workspace :is(button, a):focus-visible, .welcome button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.workspace :is(button, a, select):focus-visible, .welcome button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .empty, .error { padding: 8px; font-size: 13px; }
 .empty { color: var(--muted); }
 .error { color: var(--danger); }

@@ -12,7 +12,7 @@ import type {
 import { referenceVideoMimeType } from "@/lib/studio/video-upload";
 import type { ComposerOptions } from "@/lib/studio/composer-options";
 import type { CapabilityCatalog } from "@/lib/studio/capabilities";
-import { isImageGenerationModel } from "@/lib/studio/image-model";
+import { classifyModel } from "@/lib/probe/classify";
 
 const PENDING_FIRST_MESSAGE_KEY = "reizo:pending-first-message";
 
@@ -99,7 +99,7 @@ async function parseJson<T>(response: Response): Promise<T> {
   }
 }
 
-export async function getAvailableStudioChatModel(preferred: string): Promise<string> {
+export async function listAvailableStudioChatModels(): Promise<string[]> {
   const response = await fetchWithTimeout("/api/capabilities", {
     credentials: "same-origin",
     cache: "no-store",
@@ -108,10 +108,18 @@ export async function getAvailableStudioChatModel(preferred: string): Promise<st
 
   const catalog = await parseJson<CapabilityCatalog>(response);
   const chat = catalog.capabilities.find((item) => item.id === "chat");
-  const models = catalog.models.filter((model) => !isImageGenerationModel(model));
+  const models = catalog.models.filter((model) => {
+    const { category } = classifyModel({ model_name: model });
+    return (category === "text" || category === "unknown") && !/embedding|rerank/i.test(model);
+  });
   if (chat?.availability !== "available" || !models.length) {
     throw new StudioApiError(chat?.reason ?? "暂无可用对话模型。", 503);
   }
+  return models;
+}
+
+export async function getAvailableStudioChatModel(preferred: string): Promise<string> {
+  const models = await listAvailableStudioChatModels();
   return models.includes(preferred) ? preferred : models[0];
 }
 
