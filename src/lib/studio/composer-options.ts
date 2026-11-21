@@ -23,6 +23,7 @@ export type ComposerOptions = {
   size?: ImageSize;
   count?: 1 | 2 | 3 | 4;
   imageModel?: string;
+  directImage?: true;
   toolId?: string;
   toolParams?: Record<string, string | boolean>;
 };
@@ -96,6 +97,7 @@ export function normalizeComposerOptions(raw: unknown): ComposerOptions | null {
   return {
     mode,
     ...(typeof value.imageModel === "string" && value.imageModel.trim() && value.imageModel.length <= 100 ? { imageModel: value.imageModel.trim() } : {}),
+    ...(mode === "image" && value.directImage === true ? { directImage: true as const } : {}),
     ...(mode === "image" && size ? { size } : {}),
     ...(mode === "image" && count ? { count } : {}),
     ...(toolId ? { toolId } : {}),

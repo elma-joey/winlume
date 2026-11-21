@@ -418,9 +418,11 @@ export async function* runAgentTurn(
     return;
   }
 
+  const composer = normalizeComposerOptions(opts.metadata?.composerOptions);
+  const directImageModel = composer?.directImage ? composer.imageModel : undefined;
   const model =
     (typeof opts.model === "string" && opts.model.trim()) || session.model;
-  if (model !== session.model) {
+  if (!directImageModel && model !== session.model) {
     session = await sessions.updateSession(userId, sessionId, {
       model,
       capabilityPresetId: null,
@@ -447,12 +449,30 @@ export async function* runAgentTurn(
   const prior = await sessions.listMessages(userId, sessionId);
   const isFirstTurn = prior.length === 0;
 
+  const requestedIds = [
+    ...(opts.referencedArtifactIds ?? []),
+    ...(opts.referencedArtifactId ? [opts.referencedArtifactId] : []),
+  ];
+  const uniqueIds = [...new Set(requestedIds.map((id) => id.trim()).filter(Boolean))];
+  const referencedArtifacts: Artifact[] = [];
+  for (const id of uniqueIds) {
+    try {
+      const found = await artifacts.get(userId, id);
+      if (found && (found.kind === "image" || found.kind === "canvas" || found.kind === "sheet") && found.status !== "failed") {
+        referencedArtifacts.push(found);
+      }
+    } catch {
+      /* ignore invalid id */
+    }
+  }
+
   // Persist turn-selected ids only on Message for audit; inject uses merged set below.
   const userMessage: Message = {
     id: randomUUID(),
     sessionId,
     role: "user",
     content: userText,
+    ...(referencedArtifacts.length ? { attachmentIds: referencedArtifacts.map(({ id }) => id) } : {}),
     ...(opts.skillIds?.length ? { skillIds: opts.skillIds } : {}),
     createdAt: nowIso(),
   };
@@ -470,23 +490,33 @@ export async function* runAgentTurn(
 
   // Image models speak the Images API, not Chat Completions or tool calling.
   // Keep the normal run/session event contract so artifacts survive navigation.
-  if (isImageGenerationModel(model)) {
+  if (directImageModel || isImageGenerationModel(model)) {
     if (opts.allowedToolNames && !opts.allowedToolNames.includes("generate_image")) {
       yield { type: "error", message: "请切换到图片模式后使用此模型。", code: "image_mode_required" };
       yield { type: "done", reason: "error" };
       return;
     }
+    if (directImageModel) {
+      const token = await resolveStudioToken(opts.gatewayUserId ?? userId);
+      const catalog = await loadCapabilityCatalog({ authToken: token });
+      if (!isImageGenerationModel(directImageModel) || !catalog.models.includes(directImageModel)) {
+        yield { type: "error", message: "当前账号没有可用的所选图片模型。", code: "image_model_unavailable" };
+        yield { type: "done", reason: "error" };
+        return;
+      }
+    }
+    const generationModel = directImageModel ?? model;
     const messageId = randomUUID();
     const callId = randomUUID();
-    const sourceIds = [...new Set([...(opts.referencedArtifactIds ?? []), ...(opts.referencedArtifactId ? [opts.referencedArtifactId] : [])])];
+    const sourceIds = directImageModel ? referencedArtifacts.filter(({ kind }) => kind === "image").map(({ id }) => id) : uniqueIds;
     const input = applyComposerGenerationOptions("generate_image", {
-      name: "生成图片", prompt: userText, model, size: "1024x1024", count: 1,
+      name: "生成图片", prompt: userText, model: generationModel, size: "1024x1024", count: 1,
       ...(sourceIds.length ? { sourceArtifactIds: sourceIds } : {}),
     }, opts.metadata?.composerOptions);
     await sessions.appendMessages(userId, sessionId, [{
       id: messageId, sessionId, role: "assistant", content: "正在提交图片生成任务。",
       toolCalls: [{ id: callId, name: "generate_image", arguments: JSON.stringify(input) }],
-      metadata: { model }, createdAt: nowIso(),
+      metadata: { model: generationModel }, createdAt: nowIso(),
     }]);
     yield { type: "message_start", messageId };
     yield { type: "text_delta", text: "正在提交图片生成任务。" };
@@ -523,26 +553,6 @@ export async function* runAgentTurn(
   }
   const reminder = buildSessionReminder(artifactCount);
 
-  const requestedIds = [
-    ...(opts.referencedArtifactIds ?? []),
-    ...(opts.referencedArtifactId ? [opts.referencedArtifactId] : []),
-  ];
-  const uniqueIds = [...new Set(requestedIds.map((id) => id.trim()).filter(Boolean))];
-  const referencedArtifacts: Artifact[] = [];
-  for (const id of uniqueIds) {
-    try {
-      const found = await artifacts.get(userId, id);
-      if (
-        found &&
-        (found.kind === "image" || found.kind === "canvas" || found.kind === "sheet") &&
-        found.status !== "failed"
-      ) {
-        referencedArtifacts.push(found);
-      }
-    } catch {
-      /* ignore invalid id */
-    }
-  }
   const referencedImages = referencedArtifacts.filter((artifact) => artifact.kind === "image");
   const referencedCanvases = referencedArtifacts.filter((artifact) => artifact.kind === "canvas");
   const referencedSheets = referencedArtifacts.filter((artifact) => artifact.kind === "sheet");

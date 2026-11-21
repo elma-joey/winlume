@@ -4,16 +4,26 @@ import { join } from "node:path";
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import type { Message } from "@/lib/agent/types";
-import type { GatewayChatMessage, StreamGatewayChatParams } from "@/lib/agent/provider/gateway";
+import type { GatewayChatMessage, GenerateImageParams, StreamGatewayChatParams } from "@/lib/agent/provider/gateway";
 
 const fixture = vi.hoisted(() => ({
   userId: "cloud-owner",
   gatewayHistory: [] as GatewayChatMessage[][],
   gatewayModels: [] as string[],
+  imageRequests: [] as GenerateImageParams[],
+  png: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jUuoAAAAASUVORK5CYII=",
 }));
 
 vi.mock("@/lib/auth/session", () => ({ getCurrentUserId: () => fixture.userId }));
 vi.mock("@/lib/agent/provider/studio-token", () => ({ resolveStudioToken: async () => "fixture" }));
+vi.mock("@/lib/studio/capabilities.server", () => ({ loadCapabilityCatalog: async () => ({ models: ["gpt-image-2"], capabilities: [] }) }));
+vi.mock("@/lib/agent/provider/gateway", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/agent/provider/gateway")>(),
+  async generateImage(params: GenerateImageParams) {
+    fixture.imageRequests.push(params);
+    return [{ bytes: Buffer.from(fixture.png, "base64"), mimeType: "image/png" }];
+  },
+}));
 vi.mock("@/lib/agent/provider/ai-sdk", () => ({
   async *streamAiSdkGatewayChat({ messages, model }: StreamGatewayChatParams) {
     fixture.gatewayHistory.push(messages);
@@ -79,4 +89,39 @@ it("opens and continues the same persisted cloud conversation through independen
   fixture.userId = "another-account";
   expect((await read()).status).toBe(404);
   expect((await switchModel("gpt-4o-mini")).status).toBe(404);
+}, 30_000);
+
+it("persists uploaded references and the generated image without replacing the chat model", async () => {
+  fixture.userId = "image-owner";
+  const uploadImage = await import("../artifacts/upload-image/route");
+  const listArtifacts = await import("../artifacts/route");
+  const rawArtifact = await import("../artifacts/[id]/raw/route");
+  const created = await sessions.POST(request("/api/sessions", { model: "gpt-6.2-sol" }));
+  const { id } = await created.json();
+  const uploaded = await uploadImage.POST(request("/api/artifacts/upload-image", {
+    sessionId: id, name: "参考图.png", dataUrl: `data:image/png;base64,${fixture.png}`,
+  }));
+  expect(uploaded.status).toBe(200);
+  const { artifact } = await uploaded.json();
+  const response = await chat.POST(request("/api/chat", {
+    sessionId: id, executionMode: "ai-sdk", model: "gpt-6.1-sol", message: "根据参考图生成图片",
+    referencedArtifactIds: [artifact.id],
+    composerOptions: { mode: "image", directImage: true, imageModel: "gpt-image-2" },
+  }));
+  expect(response.status).toBe(200);
+  expect(await response.text()).toContain('"type":"data-artifact"');
+  const read = await detail.GET(new NextRequest(`http://localhost/api/sessions/${id}`), { params: Promise.resolve({ id }) });
+  const bundle = await read.json();
+  expect(bundle.session.model).toBe("gpt-6.2-sol");
+  expect(bundle.messages[0].attachmentIds).toEqual([artifact.id]);
+  expect(fixture.imageRequests[0]).toMatchObject({ model: "gpt-image-2", sourceImages: [{ mimeType: "image/png" }] });
+  await vi.waitFor(async () => {
+    const response = await listArtifacts.GET(new NextRequest(`http://localhost/api/artifacts?sessionId=${id}`));
+    const { artifacts } = await response.json();
+    const generated = artifacts.find((entry: { messageId?: string }) => entry.messageId === bundle.messages[1].id);
+    expect(generated?.status).toBe("ready");
+    const image = await rawArtifact.GET(new NextRequest(`http://localhost/api/artifacts/${generated.id}/raw`), { params: Promise.resolve({ id: generated.id }) });
+    expect(image.headers.get("content-type")).toBe("image/png");
+    expect(Buffer.from(await image.arrayBuffer()).toString("base64")).toBe(fixture.png);
+  });
 }, 30_000);

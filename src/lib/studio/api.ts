@@ -13,6 +13,7 @@ import { referenceVideoMimeType } from "@/lib/studio/video-upload";
 import type { ComposerOptions } from "@/lib/studio/composer-options";
 import type { CapabilityCatalog } from "@/lib/studio/capabilities";
 import { classifyModel } from "@/lib/probe/classify";
+import { isImageGenerationModel } from "@/lib/studio/image-model";
 
 const PENDING_FIRST_MESSAGE_KEY = "reizo:pending-first-message";
 
@@ -99,7 +100,7 @@ async function parseJson<T>(response: Response): Promise<T> {
   }
 }
 
-export async function listAvailableStudioChatModels(): Promise<string[]> {
+export async function listStudioComposerModels() {
   const response = await fetchWithTimeout("/api/capabilities", {
     credentials: "same-origin",
     cache: "no-store",
@@ -108,14 +109,21 @@ export async function listAvailableStudioChatModels(): Promise<string[]> {
 
   const catalog = await parseJson<CapabilityCatalog>(response);
   const chat = catalog.capabilities.find((item) => item.id === "chat");
-  const models = catalog.models.filter((model) => {
+  const chatModels = catalog.models.filter((model) => {
     const { category } = classifyModel({ model_name: model });
     return (category === "text" || category === "unknown") && !/embedding|rerank/i.test(model);
   });
-  if (chat?.availability !== "available" || !models.length) {
-    throw new StudioApiError(chat?.reason ?? "暂无可用对话模型。", 503);
-  }
-  return models;
+  return {
+    chatModels: chat?.availability === "available" ? chatModels : [],
+    imageModels: catalog.models.filter(isImageGenerationModel),
+    chatError: chat?.reason ?? "暂无可用对话模型。",
+  };
+}
+
+export async function listAvailableStudioChatModels(): Promise<string[]> {
+  const { chatModels, chatError } = await listStudioComposerModels();
+  if (!chatModels.length) throw new StudioApiError(chatError, 503);
+  return chatModels;
 }
 
 export async function getAvailableStudioChatModel(preferred: string): Promise<string> {
@@ -183,6 +191,7 @@ export async function listProjects(): Promise<Project[]> {
   const response = await fetch("/api/projects", {
     headers: withUserHeaders(),
     credentials: "same-origin",
+    cache: "no-store",
   });
   if (response.status === 401) throw new StudioApiError("请先登录", 401);
   if (!response.ok) {
@@ -571,6 +580,7 @@ export async function listArtifacts(sessionId?: string): Promise<Artifact[]> {
   const response = await fetch(`/api/artifacts${qs}`, {
     headers: withUserHeaders(),
     credentials: "same-origin",
+    cache: "no-store",
   });
   if (response.status === 401) {
     throw new StudioApiError("请先登录", 401);
