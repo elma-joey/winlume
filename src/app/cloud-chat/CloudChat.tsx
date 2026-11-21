@@ -5,7 +5,7 @@ import { ArrowLeft, ArrowUp, Cloud, LoaderCircle, LogOut, Plus } from "lucide-re
 import { useModals } from "@/components/providers";
 import { useStudioChat } from "@/components/studio/useStudioChat";
 import type { Session } from "@/lib/agent/types";
-import { createSession, getSessionBundle, listSessions, StudioApiError } from "@/lib/studio/api";
+import { createSession, getAvailableStudioChatModel, getSessionBundle, listSessions, StudioApiError } from "@/lib/studio/api";
 import { getDefaultModel } from "@/lib/studio/prefs";
 import styles from "./cloud-chat.module.css";
 
@@ -100,7 +100,8 @@ function CloudWorkspace() {
     setCreating(true);
     setError("");
     try {
-      const session = await createSession({ model: getDefaultModel() });
+      const model = await getAvailableStudioChatModel(getDefaultModel());
+      const session = await createSession({ model });
       ++listRequest.current;
       setSessions((previous) => [session, ...(previous ?? []).filter((item) => item.id !== session.id)]);
       selectSession(session.id);
@@ -154,9 +155,10 @@ function CloudConversation({ session, onBack, onUnauthorized, onFinish }: {
   const [bundle, setBundle] = useState<SessionBundle>();
   const [draft, setDraft] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [sendError, setSendError] = useState("");
+  const [sending, setSending] = useState(false);
   const request = useRef(0);
   const snapshot = useRef("");
-  const sending = useRef(false);
   const history = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
   useEffect(() => () => { ++request.current; }, []);
@@ -194,23 +196,27 @@ function CloudConversation({ session, onBack, onUnauthorized, onFinish }: {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = draft.trim();
-    if (!text || !bundle || bundle.activeRun || chat.streaming || sending.current) return;
-    sending.current = true;
+    if (!text || !bundle || bundle.activeRun || chat.streaming || sending) return;
+    setSending(true);
+    setSendError("");
     followLatest.current = true;
     chat.clearError();
-    setDraft("");
     try {
-      await chat.send(text);
-    } catch {
+      const model = await getAvailableStudioChatModel(bundle.session.model);
+      setDraft((current) => current.trim() === text ? "" : current);
+      await chat.send(text, { model });
+    } catch (error) {
+      if (error instanceof StudioApiError && error.status === 401) onUnauthorized();
+      setSendError(errorMessage(error, "无法发送消息，请重试。"));
       setDraft((current) => current || text);
     } finally {
-      sending.current = false;
+      setSending(false);
       snapshot.current = "";
       void refresh();
     }
   }
 
-  const busy = chat.streaming || Boolean(bundle?.activeRun);
+  const busy = sending || chat.streaming || Boolean(bundle?.activeRun);
   return (
     <section className={styles.conversation} aria-label="会话">
       <header className={styles.conversationHeader}>
@@ -232,8 +238,8 @@ function CloudConversation({ session, onBack, onUnauthorized, onFinish }: {
         </div>
       </div>
       <div className={styles.composerArea}>
-        {(loadError || chat.error) && <p className={styles.error} role="alert">
-          {loadError || "此次回复未完成。"} <button type="button" onClick={() => { chat.clearError(); void refresh(); }}>刷新会话</button>
+        {(loadError || sendError || chat.error) && <p className={styles.error} role="alert">
+          {loadError || sendError || "此次回复未完成。"} <button type="button" onClick={() => { setSendError(""); chat.clearError(); void refresh(); }}>刷新会话</button>
         </p>}
         <form className={styles.composer} onSubmit={submit}>
           <textarea aria-label="消息" placeholder="发消息" rows={1} value={draft} onChange={(event) => setDraft(event.target.value)} />
