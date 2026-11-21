@@ -105,6 +105,7 @@ export async function listSessions(projectId?: string, archived = false): Promis
   const response = await fetch(`/api/sessions${query}`, {
     headers: withUserHeaders(),
     credentials: "same-origin",
+    cache: "no-store",
   });
   if (response.status === 401) {
     throw new StudioApiError("请先登录", 401);
@@ -257,6 +258,7 @@ export async function getSessionBundle(sessionId: string): Promise<{
   const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
     headers: withUserHeaders(),
     credentials: "same-origin",
+    cache: "no-store",
   });
   if (response.status === 401) {
     throw new StudioApiError("请先登录", 401);

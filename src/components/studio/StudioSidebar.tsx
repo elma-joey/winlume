@@ -7,6 +7,7 @@ import {
   Archive,
   ChevronRight,
   CircleAlert,
+  Cloud,
   FolderKanban,
   Plus,
   LayoutGrid,
@@ -44,6 +45,7 @@ type NavItem = {
 
 const primaryNav: NavItem[] = [
   { href: "/studio", label: "新建任务", icon: Sparkles, exact: true },
+  { href: "/cloud-chat", label: "云会话", icon: Cloud },
   { href: "/studio/tasks", label: "任务看板", icon: LayoutGrid },
   { href: "/studio/tools", label: "工具与技能", icon: LayoutGrid },
   { href: "/studio/artifacts", label: "我的成果", icon: FolderKanban },
