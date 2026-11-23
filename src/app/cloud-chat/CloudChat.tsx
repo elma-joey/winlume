@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
-import { ArrowLeft, ArrowUp, Cloud, FileText, FolderPlus, Image as ImageIcon, LoaderCircle, LogOut, Paperclip, Plus, Wallet, X } from "lucide-react";
+import Image from "next/image";
+import { ArrowLeft, ArrowUp, ChevronDown, Cloud, FileText, Folder, FolderPlus, Image as ImageIcon, LoaderCircle, LogOut, MessageSquare, PanelLeft, Paperclip, Plus, Wallet, X } from "lucide-react";
 import Modal, { ModalCloseButton } from "@/components/Modal";
 import { useModals } from "@/components/providers";
 import { useStudioChat } from "@/components/studio/useStudioChat";
@@ -22,6 +23,16 @@ import styles from "./cloud-chat.module.css";
 
 type SessionBundle = Awaited<ReturnType<typeof getSessionBundle>>;
 const UNCATEGORIZED = "uncategorized";
+const MOBILE_VIEW = "(max-width: 679px)";
+
+function subscribeToMobile(notify: () => void) {
+  const query = window.matchMedia(MOBILE_VIEW);
+  query.addEventListener("change", notify);
+  return () => query.removeEventListener("change", notify);
+}
+
+function isMobileView() { return window.matchMedia(MOBILE_VIEW).matches; }
+function isServerMobileView() { return false; }
 
 function subscribeToSelection(notify: () => void) {
   window.addEventListener("hashchange", notify);
@@ -62,8 +73,8 @@ export default function CloudChat() {
 
   return (
     <main className={styles.welcome}>
-      <Cloud size={36} strokeWidth={1.5} />
-      <h1>云会话</h1>
+      <Image className={styles.welcomeMark} src="/reizo/assets/reizo-app-180.png" alt="" width={62} height={62} priority />
+      <h1>Reizo Studio</h1>
       {accountLoading
         ? <Loading />
         : <button className={styles.primary} type="button" onClick={() => openLogin("login")}>登录 Reizo</button>}
@@ -94,13 +105,30 @@ function CloudWorkspace() {
   const [projectName, setProjectName] = useState("");
   const [projectError, setProjectError] = useState("");
   const [creatingProject, setCreatingProject] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const mobile = useSyncExternalStore(subscribeToMobile, isMobileView, isServerMobileView);
   const selectedId = useSyncExternalStore(subscribeToSelection, currentSelection, () => "");
   const selected = sessions?.find((session) => session.id === selectedId);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const listRequest = useRef(0);
   const creatingRef = useRef(false);
+  const workspace = useRef<HTMLElement>(null);
   useEffect(() => () => { ++listRequest.current; }, []);
+  useEffect(() => {
+    const element = workspace.current;
+    const viewport = window.visualViewport;
+    if (!mobile || !element || !viewport) return;
+    const resize = () => {
+      if (viewport.scale === 1) element.style.setProperty("--cloud-viewport", `${viewport.height}px`);
+    };
+    resize();
+    viewport.addEventListener("resize", resize);
+    return () => {
+      viewport.removeEventListener("resize", resize);
+      element.style.removeProperty("--cloud-viewport");
+    };
+  }, [mobile]);
 
   const onUnauthorized = useCallback(() => {
     void refreshAccount();
@@ -145,6 +173,7 @@ function CloudWorkspace() {
       setProjects((previous) => [project, ...previous.filter(({ id }) => id !== project.id)]);
       setProjectFilter(project.id);
       selectSession("");
+      setSidebarOpen(false);
       setProjectOpen(false);
       setProjectName("");
       void refresh();
@@ -170,6 +199,7 @@ function CloudWorkspace() {
       ++listRequest.current;
       setSessions((previous) => [session, ...(previous ?? []).filter((item) => item.id !== session.id)]);
       selectSession(session.id);
+      setSidebarOpen(false);
     } catch (error) {
       if (error instanceof StudioApiError && error.status === 401) onUnauthorized();
       setError(errorMessage(error, "无法新建会话，请重试。"));
@@ -179,23 +209,30 @@ function CloudWorkspace() {
     }
   }
 
-  return (
-    <main className={styles.workspace} data-conversation-open={Boolean(selected)}>
-      <aside className={styles.sidebar} aria-label="云会话列表">
+  const accountName = account?.display_name || account?.username || "";
+  function renderSidebar(drawer: boolean) {
+    return (
+      <aside className={`${styles.sidebar} ${drawer ? styles.drawer : ""}`} aria-label="云会话列表">
         <header className={styles.sidebarHeader}>
-          <div className={styles.brand}><Cloud size={19} /> <h1>云会话</h1></div>
-          <RemainingQuota quota={quota} />
+          <div className={styles.brand}><Image src="/reizo/assets/reizo-app-180.png" alt="" width={28} height={28} /><h1>Reizo Studio</h1></div>
+          {drawer && <button type="button" className={styles.iconButton} onClick={() => setSidebarOpen(false)} aria-label="关闭会话列表" title="关闭会话列表"><X size={19} /></button>}
+        </header>
+        <div className={styles.sidebarActions}>
           <button type="button" className={styles.primary} onClick={addSession} disabled={creating}>
             {creating ? <Loading /> : <Plus size={17} />} 新建
           </button>
-        </header>
-        <div className={styles.projectBar}>
-          <select className={styles.projectSelect} aria-label="项目筛选" value={scope} onChange={(event) => setProjectFilter(event.currentTarget.value)}>
-            <option value="">全部会话</option>
-            {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-            <option value={UNCATEGORIZED}>未归类</option>
-          </select>
-          <button type="button" className={styles.iconButton} aria-label="新建项目" title="新建项目" onClick={() => setProjectOpen(true)}><FolderPlus size={19} /></button>
+          <div className={styles.projectBar}>
+            <label className={styles.projectFilter}>
+              <Folder size={16} aria-hidden />
+              <select className={styles.projectSelect} aria-label="项目筛选" value={scope} onChange={(event) => setProjectFilter(event.currentTarget.value)}>
+                <option value="">全部会话</option>
+                {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                <option value={UNCATEGORIZED}>未归类</option>
+              </select>
+              <ChevronDown size={14} aria-hidden />
+            </label>
+            <button type="button" className={styles.iconButton} aria-label="新建项目" title="新建项目" onClick={() => setProjectOpen(true)}><FolderPlus size={19} /></button>
+          </div>
         </div>
         <div className={styles.sessionList}>
           {error && <p className={styles.error} role="alert">{error} <button type="button" onClick={refresh}>重试</button></p>}
@@ -204,18 +241,31 @@ function CloudWorkspace() {
           {groups.map((group) => <section key={group.id} aria-label={group.name}>
             {!scope && projects.length > 0 && <h2 className={styles.projectHeading}>{group.name}</h2>}
             {group.sessions.map((session) => <button key={session.id} type="button" className={styles.session}
-              aria-current={selected?.id === session.id ? "true" : undefined} onClick={() => selectSession(session.id)}>{session.title}</button>)}
+              aria-current={selected?.id === session.id ? "true" : undefined} onClick={() => { selectSession(session.id); setSidebarOpen(false); }}>
+              <MessageSquare size={16} aria-hidden /><span>{session.title}</span>
+            </button>)}
           </section>)}
         </div>
         <footer className={styles.account}>
-          <span>{account?.display_name || account?.username}</span>
+          <span className={styles.avatar} aria-hidden>{[...accountName][0]?.toUpperCase()}</span>
+          <div className={styles.accountDetails}><span>{accountName}</span><RemainingQuota quota={quota} /></div>
           <button type="button" className={styles.iconButton} title="退出登录" aria-label="退出登录" onClick={() => void signOut()}><LogOut size={17} /></button>
         </footer>
       </aside>
+    );
+  }
+
+  return (
+    <main ref={workspace} className={styles.workspace} data-conversation-open={Boolean(selected)}>
+      {renderSidebar(false)}
       {selected
-        ? <CloudConversation key={selected.id} session={selected} projects={projects} quota={quota} onBack={() => selectSession("")} onUnauthorized={onUnauthorized}
+        ? <CloudConversation key={selected.id} session={selected} projects={projects} quota={quota} mobile={mobile}
+          onBack={() => { if (mobile) setSidebarOpen(true); else selectSession(""); }} onUnauthorized={onUnauthorized}
           onChange={refresh} onFinish={() => { void refresh(); refreshAfterUse(); }} onBalanceChange={refreshAfterUse} />
         : <section className={styles.blank}><Cloud size={32} strokeWidth={1.5} /><h2>选择会话</h2></section>}
+      <Modal open={Boolean(mobile && selected && sidebarOpen)} onClose={() => setSidebarOpen(false)} label="会话列表" size="drawer">
+        {renderSidebar(true)}
+      </Modal>
       <Modal open={projectOpen} onClose={closeProject} label="新建项目">
         <form className={styles.sheetPanel} onSubmit={addProject}>
           <header className={styles.sheetHeader}><h2>新建项目</h2><ModalCloseButton onClose={closeProject} /></header>
@@ -230,10 +280,11 @@ function CloudWorkspace() {
   );
 }
 
-function CloudConversation({ session, projects, quota, onBack, onUnauthorized, onChange, onFinish, onBalanceChange }: {
+function CloudConversation({ session, projects, quota, mobile, onBack, onUnauthorized, onChange, onFinish, onBalanceChange }: {
   session: Session;
   projects: Project[];
   quota: number | null;
+  mobile: boolean;
   onBack: () => void;
   onUnauthorized: () => void;
   onChange: () => void;
@@ -437,11 +488,19 @@ function CloudConversation({ session, projects, quota, onBack, onUnauthorized, o
   return (
     <section className={styles.conversation} aria-label="会话">
       <header className={styles.conversationHeader}>
-        <button type="button" onClick={onBack} className={styles.iconButton} aria-label="返回会话列表" title="返回会话列表"><ArrowLeft size={20} /></button>
+        <button type="button" onClick={onBack} className={styles.iconButton} aria-label="返回会话列表" title="返回会话列表" aria-haspopup={mobile ? "dialog" : undefined}>
+          {mobile ? <PanelLeft size={20} /> : <ArrowLeft size={20} />}
+        </button>
         <h2>{bundle?.session.title ?? session.title}</h2>
         <RemainingQuota quota={quota} />
-        <CloudModelPicker models={options ?? null} imageMode={imageMode} value={displayedModel}
-          disabled={!bundle || busy || pendingSettings !== null} onChange={changeModel} />
+        {projects.length > 0 && <label className={styles.moveProject} title="移动到项目">
+          <Folder size={18} aria-hidden />
+          <select aria-label="会话项目" value={displayedProject} disabled={!bundle || busy || pendingSettings !== null}
+            onChange={(event) => void changeSettings({ projectId: event.currentTarget.value || null })}>
+            <option value="">未归类</option>
+            {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+          </select>
+        </label>}
       </header>
       <div ref={history} className={styles.history} onScroll={(event) => {
         const pane = event.currentTarget;
@@ -466,32 +525,29 @@ function CloudConversation({ session, projects, quota, onBack, onUnauthorized, o
         {(loadError || sendError || chat.error) && <p className={styles.error} role="alert">
           {loadError || sendError || replyError} <button type="button" onClick={() => { setSendError(""); chat.clearError(); void refresh(); void refreshModels(); void refreshArtifacts(); }}>刷新会话</button>
         </p>}
-        {attachments.length > 0 && <ul className={styles.attachments} aria-label="待发送附件">
-          {attachments.map(({ id, file }) => <li className={styles.attachmentChip} key={id}><FileText size={15} aria-hidden />
-            <span title={file.name}>{file.name}</span><button type="button" aria-label={`移除 ${file.name}`} disabled={busy}
-              onClick={() => setAttachments((previous) => previous.filter((item) => item.id !== id))}><X size={15} /></button>
-          </li>)}
-        </ul>}
-        <div className={styles.composerTools}>
-          <input type="file" hidden ref={fileInput} aria-label="选择附件" multiple
-            accept={imageMode ? "image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" : CLOUD_ATTACHMENT_ACCEPT}
-            onChange={(event) => { addFiles(event.currentTarget.files); event.currentTarget.value = ""; }} />
-          <button type="button" className={styles.iconButton} aria-label="添加附件" title="添加附件"
-            disabled={!bundle || busy || attachments.length >= MAX_CLOUD_ATTACHMENTS} onClick={() => fileInput.current?.click()}><Paperclip size={18} /></button>
-          <button type="button" className={styles.modeButton} aria-pressed={imageMode}
-            title={!imageMode && !models?.imageModels.length ? "暂无可用图片模型" : undefined}
-            disabled={busy || (!imageMode && !models?.imageModels.length)} onClick={() => { setImageMode((previous) => !previous); setSendError(""); }}><ImageIcon size={17} aria-hidden /> 生图</button>
-          {projects.length > 0 && <select className={styles.projectSelect} aria-label="会话项目" value={displayedProject}
-            disabled={!bundle || busy || pendingSettings !== null} onChange={(event) => void changeSettings({ projectId: event.currentTarget.value || null })}>
-            <option value="">未归类</option>
-            {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-          </select>}
-        </div>
         <form className={styles.composer} onSubmit={submit}>
+          {attachments.length > 0 && <ul className={styles.attachments} aria-label="待发送附件">
+            {attachments.map(({ id, file }) => <li className={styles.attachmentChip} key={id}><FileText size={15} aria-hidden />
+              <span title={file.name}>{file.name}</span><button type="button" aria-label={`移除 ${file.name}`} disabled={busy}
+                onClick={() => setAttachments((previous) => previous.filter((item) => item.id !== id))}><X size={15} /></button>
+            </li>)}
+          </ul>}
           <textarea aria-label="消息" placeholder={imageMode ? "描述要生成的图片" : "发消息"} rows={1} value={draft} onChange={(event) => setDraft(event.target.value)} />
-          <button className={styles.send} type="submit" title="发送" aria-label="发送" disabled={!bundle || busy || pendingSettings !== null || !canSend}>
-            <ArrowUp size={20} />
-          </button>
+          <div className={styles.composerTools}>
+            <input type="file" hidden ref={fileInput} aria-label="选择附件" multiple
+              accept={imageMode ? "image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" : CLOUD_ATTACHMENT_ACCEPT}
+              onChange={(event) => { addFiles(event.currentTarget.files); event.currentTarget.value = ""; }} />
+            <button type="button" className={styles.iconButton} aria-label="添加附件" title="添加附件"
+              disabled={!bundle || busy || attachments.length >= MAX_CLOUD_ATTACHMENTS} onClick={() => fileInput.current?.click()}><Paperclip size={18} /></button>
+            <button type="button" className={styles.modeButton} aria-pressed={imageMode}
+              title={!imageMode && !models?.imageModels.length ? "暂无可用图片模型" : undefined}
+              disabled={busy || (!imageMode && !models?.imageModels.length)} onClick={() => { setImageMode((previous) => !previous); setSendError(""); }}><ImageIcon size={17} aria-hidden /> 生图</button>
+            <CloudModelPicker models={options ?? null} imageMode={imageMode} value={displayedModel}
+              disabled={!bundle || busy || pendingSettings !== null} onChange={changeModel} />
+            <button className={styles.send} type="submit" title="发送" aria-label="发送" disabled={!bundle || busy || pendingSettings !== null || !canSend}>
+              <ArrowUp size={20} />
+            </button>
+          </div>
         </form>
       </div>
     </section>

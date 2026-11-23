@@ -12,7 +12,7 @@ interface ModalProps {
   onClose: () => void;
   label: string;
   align?: "center" | "top";
-  size?: "default" | "workspace" | "onboarding" | "overlay";
+  size?: "default" | "workspace" | "onboarding" | "overlay" | "drawer" | "sheet";
   children: ReactNode;
 }
 
@@ -105,8 +105,9 @@ export default function Modal({
         onMouseDown={closeOnBackdrop}
       >
         <div
-          className={`flex min-h-full w-full justify-center ${
-            size === "overlay" ? "items-center px-[5vw] py-[6vh]" : "p-4"
+          className={`flex min-h-full w-full ${size === "drawer" ? "" : "justify-center"} ${
+            size === "drawer" ? "justify-start" : size === "sheet" ? "max-sm:items-end max-sm:p-0 sm:p-4" :
+              size === "overlay" ? "items-center px-[5vw] py-[6vh]" : "p-4"
           }`}
           onMouseDown={closeOnBackdrop}
         >
@@ -117,13 +118,19 @@ export default function Modal({
             aria-label={label}
             tabIndex={-1}
             className={`w-full outline-none focus:outline-none focus-visible:outline-none ${
-              size === "overlay"
+              size === "drawer"
+                ? "flex h-dvh max-w-[min(87vw,360px)] flex-col"
+                : size === "sheet"
+                  ? "max-w-md sm:my-auto"
+                  : size === "overlay"
                 ? "flex h-[min(84dvh,56rem)] flex-col"
                 : align === "top"
                   ? "mt-[10dvh] mb-4"
                   : "my-auto"
             } ${closing ? "modal-pop-out" : "modal-pop"} ${
-              size === "overlay"
+              size === "drawer" || size === "sheet"
+                ? ""
+                : size === "overlay"
                 ? "max-w-none"
                 : size === "workspace"
                   ? "max-w-6xl"

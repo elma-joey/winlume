@@ -32,7 +32,7 @@ export function CloudModelPicker({ models, value, disabled, imageMode, onChange 
       <span>{value || (models === null ? "加载模型…" : models.length ? "选择模型" : "暂无可用模型")}</span>
       <ChevronDown size={14} aria-hidden />
     </button>
-    <Modal open={open} onClose={() => setOpen(false)} label={label}>
+    <Modal open={open} onClose={() => setOpen(false)} label={label} size="sheet">
       <div className={styles.sheetPanel}>
         <header className={styles.sheetHeader}><h2>{imageMode ? "图片模型" : "对话模型"}</h2><ModalCloseButton onClose={() => setOpen(false)} /></header>
         <div className={styles.modelList}>
