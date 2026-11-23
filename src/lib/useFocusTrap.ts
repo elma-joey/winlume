@@ -12,6 +12,7 @@ export function useFocusTrap(
   containerRef: RefObject<HTMLElement | null>,
   active: boolean,
   isTopmost: () => boolean = () => true,
+  preferInput = true,
 ) {
   const isTopmostRef = useRef(isTopmost);
   // 在 effect 中同步最新判断函数，避免渲染期写 ref
@@ -30,7 +31,7 @@ export function useFocusTrap(
       Array.from(container.querySelectorAll<HTMLElement>(focusableSelector));
 
     const initial =
-      container.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled])") ??
+      (preferInput ? container.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled])") : null) ??
       focusables()[0] ??
       container;
     initial.focus();
@@ -62,5 +63,5 @@ export function useFocusTrap(
       document.removeEventListener("keydown", onKeyDown);
       previouslyFocused?.focus();
     };
-  }, [active, containerRef]);
+  }, [active, containerRef, preferInput]);
 }

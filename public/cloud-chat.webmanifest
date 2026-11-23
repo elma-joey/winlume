@@ -6,8 +6,8 @@
   "start_url": "/cloud-chat",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f6f5f9",
-  "theme_color": "#f6f5f9",
+  "background_color": "#fafafb",
+  "theme_color": "#fafafb",
   "icons": [
     { "src": "/reizo/assets/reizo-app-180.png", "sizes": "180x180", "type": "image/png" },
     { "src": "/reizo/assets/reizo-app-512.png", "sizes": "512x512", "type": "image/png" }

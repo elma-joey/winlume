@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import Image from "next/image";
-import { ArrowLeft, ArrowUp, ChevronDown, Cloud, FileText, Folder, FolderPlus, Image as ImageIcon, LoaderCircle, LogOut, MessageSquare, PanelLeft, Paperclip, Plus, Wallet, X } from "lucide-react";
+import { ArrowLeft, ArrowUp, Cloud, FileText, FolderPlus, Image as ImageIcon, LoaderCircle, LogOut, MessageSquare, PanelLeft, Paperclip, Plus, Wallet, X } from "lucide-react";
 import Modal, { ModalCloseButton } from "@/components/Modal";
 import { useModals } from "@/components/providers";
 import { useStudioChat } from "@/components/studio/useStudioChat";
@@ -16,6 +16,7 @@ import { composeOutboundMessage, createPastedBlock, readFileAsText } from "@/lib
 import { isImageGenerationModel } from "@/lib/studio/image-model";
 import { getDefaultModel } from "@/lib/studio/prefs";
 import { CloudModelPicker } from "./CloudModelPicker";
+import { CloudProjectPicker } from "./CloudMenu";
 import { CloudImage } from "./CloudImage";
 import { useCloudQuota } from "./useCloudQuota";
 import { CLOUD_ATTACHMENT_ACCEPT, MAX_CLOUD_ATTACHMENTS, toCloudAttachment, uploadCloudAttachment, type CloudAttachment } from "./cloud-attachments";
@@ -113,12 +114,11 @@ function CloudWorkspace() {
   const [error, setError] = useState("");
   const listRequest = useRef(0);
   const creatingRef = useRef(false);
-  const workspace = useRef<HTMLElement>(null);
   useEffect(() => () => { ++listRequest.current; }, []);
   useEffect(() => {
-    const element = workspace.current;
+    const element = document.documentElement;
     const viewport = window.visualViewport;
-    if (!mobile || !element || !viewport) return;
+    if (!mobile || !viewport) return;
     const resize = () => {
       if (viewport.scale === 1) element.style.setProperty("--cloud-viewport", `${viewport.height}px`);
     };
@@ -222,15 +222,7 @@ function CloudWorkspace() {
             {creating ? <Loading /> : <Plus size={17} />} 新建
           </button>
           <div className={styles.projectBar}>
-            <label className={styles.projectFilter}>
-              <Folder size={16} aria-hidden />
-              <select className={styles.projectSelect} aria-label="项目筛选" value={scope} onChange={(event) => setProjectFilter(event.currentTarget.value)}>
-                <option value="">全部会话</option>
-                {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-                <option value={UNCATEGORIZED}>未归类</option>
-              </select>
-              <ChevronDown size={14} aria-hidden />
-            </label>
+            <CloudProjectPicker mobile={mobile} projects={projects} value={scope} onChange={setProjectFilter} unassigned={UNCATEGORIZED} />
             <button type="button" className={styles.iconButton} aria-label="新建项目" title="新建项目" onClick={() => setProjectOpen(true)}><FolderPlus size={19} /></button>
           </div>
         </div>
@@ -256,7 +248,7 @@ function CloudWorkspace() {
   }
 
   return (
-    <main ref={workspace} className={styles.workspace} data-conversation-open={Boolean(selected)}>
+    <main className={styles.workspace} data-conversation-open={Boolean(selected)}>
       {renderSidebar(false)}
       {selected
         ? <CloudConversation key={selected.id} session={selected} projects={projects} quota={quota} mobile={mobile}
@@ -493,14 +485,8 @@ function CloudConversation({ session, projects, quota, mobile, onBack, onUnautho
         </button>
         <h2>{bundle?.session.title ?? session.title}</h2>
         <RemainingQuota quota={quota} />
-        {projects.length > 0 && <label className={styles.moveProject} title="移动到项目">
-          <Folder size={18} aria-hidden />
-          <select aria-label="会话项目" value={displayedProject} disabled={!bundle || busy || pendingSettings !== null}
-            onChange={(event) => void changeSettings({ projectId: event.currentTarget.value || null })}>
-            <option value="">未归类</option>
-            {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-          </select>
-        </label>}
+        {projects.length > 0 && <CloudProjectPicker mobile={mobile} projects={projects} value={displayedProject}
+          disabled={!bundle || busy || pendingSettings !== null} onChange={(projectId) => void changeSettings({ projectId: projectId || null })} />}
       </header>
       <div ref={history} className={styles.history} onScroll={(event) => {
         const pane = event.currentTarget;
@@ -542,7 +528,7 @@ function CloudConversation({ session, projects, quota, mobile, onBack, onUnautho
             <button type="button" className={styles.modeButton} aria-pressed={imageMode}
               title={!imageMode && !models?.imageModels.length ? "暂无可用图片模型" : undefined}
               disabled={busy || (!imageMode && !models?.imageModels.length)} onClick={() => { setImageMode((previous) => !previous); setSendError(""); }}><ImageIcon size={17} aria-hidden /> 生图</button>
-            <CloudModelPicker models={options ?? null} imageMode={imageMode} value={displayedModel}
+            <CloudModelPicker models={options ?? null} imageMode={imageMode} mobile={mobile} value={displayedModel}
               disabled={!bundle || busy || pendingSettings !== null} onChange={changeModel} />
             <button className={styles.send} type="submit" title="发送" aria-label="发送" disabled={!bundle || busy || pendingSettings !== null || !canSend}>
               <ArrowUp size={20} />

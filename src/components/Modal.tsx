@@ -85,7 +85,7 @@ export default function Modal({
     };
   }, [active, id]);
 
-  useFocusTrap(panelRef, active, () => modalStack[modalStack.length - 1] === id);
+  useFocusTrap(panelRef, active, () => modalStack[modalStack.length - 1] === id, size !== "sheet");
 
   if (!active) return null;
 
@@ -106,7 +106,7 @@ export default function Modal({
       >
         <div
           className={`flex min-h-full w-full ${size === "drawer" ? "" : "justify-center"} ${
-            size === "drawer" ? "justify-start" : size === "sheet" ? "max-sm:items-end max-sm:p-0 sm:p-4" :
+            size === "drawer" ? "justify-start" : size === "sheet" ? "items-end" :
               size === "overlay" ? "items-center px-[5vw] py-[6vh]" : "p-4"
           }`}
           onMouseDown={closeOnBackdrop}
@@ -121,7 +121,7 @@ export default function Modal({
               size === "drawer"
                 ? "flex h-dvh max-w-[min(87vw,360px)] flex-col"
                 : size === "sheet"
-                  ? "max-w-md sm:my-auto"
+                  ? "max-w-none"
                   : size === "overlay"
                 ? "flex h-[min(84dvh,56rem)] flex-col"
                 : align === "top"
